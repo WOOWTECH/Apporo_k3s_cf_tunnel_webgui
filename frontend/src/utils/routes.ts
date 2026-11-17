@@ -7,7 +7,7 @@ function hostnameKey(route: Route): string {
 /**
  * Append routes to a route list, skipping hostnames that are already there
  * (case-insensitive). Completely blank rows of the current list are dropped,
- * so a "+ 新增路由" row left empty does not block saving.
+ * so a "+ Add route" row left empty does not block saving.
  */
 export function appendRoutes(current: Route[], added: Route[]): Route[] {
   const result = current.filter((route) => route.hostname.trim() || route.service.trim())

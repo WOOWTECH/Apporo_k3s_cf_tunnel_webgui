@@ -15,10 +15,10 @@ export function normalizePrefix(raw: string): string {
 
 /** A human-readable error for an invalid (normalized) prefix, or `null` when it is valid. */
 export function routePrefixError(prefix: string): string | null {
-  if (!prefix) return '請輸入子網域前綴'
-  if (prefix.length < 3 || prefix.length > 63) return '前綴長度需為 3 到 63 個字元'
+  if (!prefix) return 'Enter a subdomain prefix'
+  if (prefix.length < 3 || prefix.length > 63) return 'A prefix must be 3 to 63 characters long'
   if (!ROUTE_PREFIX_RE.test(prefix)) {
-    return '前綴只能用小寫英文、數字與「-」，且開頭與結尾不可為「-」'
+    return 'A prefix can only use lowercase letters, digits and "-", and cannot start or end with "-"'
   }
   return null
 }

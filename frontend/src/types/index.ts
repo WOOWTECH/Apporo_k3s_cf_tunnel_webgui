@@ -110,7 +110,7 @@ export interface WorkspaceService {
 /** Shape of GET /api/workspace. Only `available` and `reason` are guaranteed when available=false. */
 export interface WorkspaceInfo {
   available: boolean
-  /** Human-readable (zh-TW) when available=false. */
+  /** Human-readable, from the backend, when available=false. */
   reason: string | null
   namespace?: string | null
   self_release?: string | null

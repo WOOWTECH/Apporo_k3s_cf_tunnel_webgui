@@ -1,5 +1,5 @@
 <template>
-  <div class="fixed inset-0 z-50 !m-0 flex items-end justify-center bg-slate-900/50 sm:items-center sm:p-6">
+  <div class="fixed inset-0 z-50 !m-0 flex items-end justify-center bg-ink/50 sm:items-center sm:p-6">
     <!-- !m-0: the pages use space-y-*, whose margin would shift this fixed overlay down. -->
     <div
       ref="dialogEl"
@@ -12,20 +12,24 @@
     >
       <header class="flex items-start justify-between gap-4 border-b border-gray-200 px-5 py-4 sm:px-6">
         <div class="min-w-0">
-          <h2 :id="titleId" class="text-lg font-semibold text-gray-900">
-            {{ isPaas ? '一次開通工作區服務' : '從工作區加入服務' }}
+          <h2 :id="titleId" class="text-lg font-semibold text-ink">
+            {{ isPaas ? 'Publish workspace services' : 'Add services from this workspace' }}
           </h2>
           <p class="mt-1 text-xs leading-5 text-gray-500">
             <template v-if="isPaas">
-              勾選要對外開放的服務，每個服務會成為一條公開路由（前綴.{{ routeDomain || '網域' }}），一次最多 {{ MAX_ROUTES_PER_BATCH }} 個。
+              Select up to {{ MAX_ROUTES_PER_BATCH }} services to make public at a time. Each one becomes a public
+              route at &lt;prefix&gt;.{{ routeDomain || 'your-domain' }}.
             </template>
-            <template v-else>勾選服務並填好網域，會加到路由清單；仍要儲存或套用設定才會生效。</template>
+            <template v-else>
+              Select services and enter a domain to add them to the route list. They take effect once you save
+              or apply the settings.
+            </template>
           </p>
         </div>
         <button
           type="button"
           class="shrink-0 rounded-lg px-2 py-1 text-xl leading-none text-gray-400 hover:bg-gray-100 hover:text-gray-700"
-          aria-label="關閉"
+          aria-label="Close"
           data-test="picker-close"
           @click="close"
         >
@@ -34,7 +38,7 @@
       </header>
 
       <div class="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4 sm:px-6">
-        <p v-if="loading" class="text-sm text-gray-500">讀取工作區服務中…</p>
+        <p v-if="loading" class="text-sm text-gray-500">Loading the workspace services…</p>
 
         <div
           v-else-if="loadError"
@@ -42,7 +46,7 @@
           class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
         >
           {{ loadError }}
-          <button type="button" class="ml-2 font-semibold underline" @click="load">重試</button>
+          <button type="button" class="ml-2 font-semibold underline" @click="load">Retry</button>
         </div>
 
         <p
@@ -50,7 +54,7 @@
           class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900"
           data-test="picker-unavailable"
         >
-          {{ info.reason || '目前無法讀取這個工作區的服務。' }}
+          {{ info.reason || 'The services of this workspace cannot be read right now.' }}
         </p>
 
         <template v-else-if="info">
@@ -63,13 +67,13 @@
             <p class="font-semibold">{{ serverError.message }}</p>
             <ul v-if="unmatchedServerErrors.length" class="mt-1 list-inside list-disc text-xs">
               <li v-for="[key, reason] in unmatchedServerErrors" :key="key">
-                <code>{{ key }}</code>：{{ reason }}
+                <code>{{ key }}</code>: {{ reason }}
               </li>
             </ul>
           </div>
 
           <label v-if="!isPaas" class="block text-sm font-medium text-gray-700">
-            網域
+            Domain
             <input
               v-model="domain"
               type="text"
@@ -77,11 +81,12 @@
               autocomplete="off"
               spellcheck="false"
               class="mt-1 block w-full rounded-lg border px-3 py-2 font-mono text-sm shadow-sm focus:outline-none focus:ring-1"
-              :class="showDomainError ? 'border-red-300 focus:border-red-500 focus:ring-red-500' : 'border-gray-300 focus:border-cf-orange focus:ring-cf-orange'"
+              :class="showDomainError ? 'border-red-300 focus:border-red-500 focus:ring-red-500' : 'border-gray-300 focus:border-brand focus:ring-brand'"
               data-test="picker-domain"
             />
             <span class="mt-1 block text-xs font-normal text-gray-500">
-              hostname 會是「名稱.網域」，網域要在 tunnel 所屬的 Cloudflare 帳號裡。
+              Each hostname is &lt;name&gt;.&lt;domain&gt;. The domain must be in the Cloudflare account that
+              owns the tunnel.
             </span>
             <span v-if="showDomainError" class="mt-1 block text-xs font-normal text-red-600" data-test="picker-domain-error">
               {{ domainError }}
@@ -92,26 +97,26 @@
             <label class="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
               <input
                 type="checkbox"
-                class="h-4 w-4 rounded border-gray-300 text-cf-orange focus:ring-cf-orange"
+                class="h-4 w-4 rounded border-gray-300 text-brand accent-brand focus:ring-brand"
                 :checked="allSelected"
                 :indeterminate="someSelected"
                 :disabled="!selectableRows.length"
                 data-test="picker-select-all"
                 @change="toggleAll"
               />
-              全選
+              Select all
             </label>
             <span class="text-xs text-gray-500">
-              <template v-if="workspaceLabel">{{ workspaceLabel }} · </template>已選 {{ selectedCount }} / {{ rows.length }}
+              <template v-if="workspaceLabel">{{ workspaceLabel }} · </template>{{ selectedCount }} of {{ rows.length }} selected
             </span>
           </div>
 
-          <p v-if="isPaas && limitReached" class="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600" data-test="picker-limit">
-            一次最多開通 {{ MAX_ROUTES_PER_BATCH }} 個服務，其餘的請下一批再開通。
+          <p v-if="isPaas && limitReached" class="rounded-lg bg-stone-50 px-3 py-2 text-xs text-stone-600" data-test="picker-limit">
+            You can publish up to {{ MAX_ROUTES_PER_BATCH }} services at a time. Publish the rest in another batch.
           </p>
 
           <p v-if="!rows.length" class="rounded-lg bg-gray-50 px-4 py-3 text-sm text-gray-600" data-test="picker-empty">
-            這個工作區目前沒有其他服務。
+            This workspace has no other services.
           </p>
 
           <ul v-else class="space-y-3">
@@ -119,47 +124,47 @@
               v-for="entry in entries"
               :key="entry.row.key"
               class="rounded-xl border px-4 py-3"
-              :class="entry.row.selected ? 'border-orange-300 bg-orange-50/40' : 'border-gray-200 bg-white'"
+              :class="entry.row.selected ? 'border-brand-300 bg-brand-50' : 'border-gray-200 bg-white'"
               data-test="picker-row"
             >
               <div class="flex items-start gap-3">
                 <input
                   v-model="entry.row.selected"
                   type="checkbox"
-                  class="mt-1 h-4 w-4 shrink-0 rounded border-gray-300 text-cf-orange focus:ring-cf-orange disabled:opacity-40"
+                  class="mt-1 h-4 w-4 shrink-0 rounded border-gray-300 text-brand accent-brand focus:ring-brand disabled:opacity-40"
                   :disabled="!entry.row.selected && (!entry.endpointCount || limitReached)"
-                  :aria-label="`選取 ${entry.name}`"
+                  :aria-label="`Select ${entry.name}`"
                   data-test="picker-select"
                 />
                 <div class="min-w-0 flex-1">
                   <div class="flex flex-wrap items-center gap-2">
-                    <span class="font-medium text-gray-900" data-test="picker-service-name">{{ entry.name }}</span>
+                    <span class="font-medium text-ink" data-test="picker-service-name">{{ entry.name }}</span>
                     <span class="rounded-full px-2 py-0.5 text-[11px] font-semibold" :class="readiness(entry.row.service).tone">
                       {{ readiness(entry.row.service).label }}
                     </span>
                     <span
                       v-if="entry.row.service.state"
-                      class="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700"
+                      class="rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-medium text-stone-700"
                     >
-                      PaaS：{{ serviceStateLabel(entry.row.service.state) }}
+                      Apporo: {{ serviceStateLabel(entry.row.service.state) }}
                     </span>
                   </div>
                   <p v-if="entry.row.service.display_name" class="mt-0.5 text-xs text-gray-500">
                     {{ entry.row.service.chart }} · {{ entry.row.service.release }}
                   </p>
 
-                  <p v-if="!entry.endpointCount" class="mt-2 text-xs text-gray-500">這個服務沒有可以連線的連接埠。</p>
+                  <p v-if="!entry.endpointCount" class="mt-2 text-xs text-gray-500">This service has no port to connect to.</p>
                   <div v-else class="mt-3 grid gap-3 sm:grid-cols-2">
                     <label class="block text-xs font-medium text-gray-500">
-                      連接埠
+                      Port
                       <select
                         v-if="entry.endpointCount > 1"
                         v-model="entry.row.endpointUrl"
                         class="mt-1 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs text-gray-800"
                         data-test="picker-endpoint"
                       >
-                        <option v-if="entry.primary" :value="entry.primary.url">{{ endpointLabel(entry.primary) }}（預設）</option>
-                        <optgroup label="其他連接埠">
+                        <option v-if="entry.primary" :value="entry.primary.url">{{ endpointLabel(entry.primary) }} (default)</option>
+                        <optgroup label="Other ports">
                           <option v-for="endpoint in entry.others" :key="endpointKey(endpoint)" :value="endpoint.url">
                             {{ endpointLabel(endpoint) }}
                           </option>
@@ -170,14 +175,14 @@
                       </code>
                     </label>
                     <label class="block text-xs font-medium text-gray-500">
-                      {{ isPaas ? '子網域前綴' : '名稱' }}
+                      {{ isPaas ? 'Subdomain prefix' : 'Name' }}
                       <input
                         v-model="entry.row.name"
                         type="text"
                         autocomplete="off"
                         spellcheck="false"
-                        class="mt-1 block w-full rounded-lg border px-3 py-2 font-mono text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-1"
-                        :class="entry.row.selected && entry.error ? 'border-red-300 focus:border-red-500 focus:ring-red-500' : 'border-gray-300 focus:border-cf-orange focus:ring-cf-orange'"
+                        class="mt-1 block w-full rounded-lg border px-3 py-2 font-mono text-sm text-ink shadow-sm focus:outline-none focus:ring-1"
+                        :class="entry.row.selected && entry.error ? 'border-red-300 focus:border-red-500 focus:ring-red-500' : 'border-gray-300 focus:border-brand focus:ring-brand'"
                         data-test="picker-field"
                       />
                       <span class="mt-1 block truncate font-mono text-[11px] font-normal text-gray-500" data-test="picker-preview">
@@ -189,14 +194,14 @@
                   <template v-if="entry.row.selected">
                     <p v-if="entry.error" class="mt-2 text-xs text-red-600" data-test="picker-error">{{ entry.error }}</p>
                     <p v-else-if="entry.verdict?.state === 'rejected'" class="mt-2 text-xs text-red-600" data-test="picker-rejected">
-                      上次送出被拒：{{ entry.verdict.reason }}
+                      Rejected last time: {{ entry.verdict.reason }}
                     </p>
                     <p v-else-if="entry.verdict?.state === 'available'" class="mt-2 text-xs font-medium text-emerald-700" data-test="picker-available">
-                      ✓ 可以使用
+                      ✓ Available
                     </p>
-                    <p v-else-if="entry.verdict?.state === 'checking'" class="mt-2 text-xs text-gray-500">檢查中…</p>
+                    <p v-else-if="entry.verdict?.state === 'checking'" class="mt-2 text-xs text-gray-500">Checking…</p>
                     <p v-else-if="entry.verdict?.state === 'unknown'" class="mt-2 text-xs text-amber-700">
-                      無法確認是否可用：{{ entry.verdict.reason }}
+                      Could not check availability: {{ entry.verdict.reason }}
                     </p>
                   </template>
                   <p
@@ -204,14 +209,16 @@
                     class="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900"
                     data-test="picker-tcp-warning"
                   >
-                    這是 TCP 連接埠，不是網頁服務：瀏覽器無法直接開啟，要用 cloudflared access 等用戶端連線。
+                    This is a TCP port, not a web service: a browser cannot open it. Connect with a client
+                    such as <code>cloudflared access</code>.
                   </p>
                   <p
                     v-if="entry.row.service.ready === false"
                     class="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900"
                     data-test="picker-not-ready"
                   >
-                    服務目前沒有就緒的端點；開通後網址可能先回 502，直到服務啟動完成。
+                    The service has no ready endpoint yet, so its hostname may answer 502 until the service
+                    has started.
                   </p>
                 </div>
               </div>
@@ -229,7 +236,7 @@
           data-test="picker-check"
           @click="checkAvailability"
         >
-          {{ checking ? '檢查中…' : '檢查可用性' }}
+          {{ checking ? 'Checking…' : 'Check availability' }}
         </button>
         <button
           type="button"
@@ -237,12 +244,12 @@
           data-test="picker-cancel"
           @click="close"
         >
-          {{ ready ? '取消' : '關閉' }}
+          {{ ready ? 'Cancel' : 'Close' }}
         </button>
         <button
           v-if="ready"
           type="button"
-          class="rounded-lg bg-cf-orange px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-gray-300"
+          class="rounded-lg bg-brand px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-gray-300"
           :disabled="!canSubmit"
           data-test="picker-submit"
           @click="submit"
@@ -258,6 +265,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, useId, watch } from 'vue'
 import { checkRoutePrefix, getWorkspace } from '@/api'
 import { hostnameError } from '@/utils/hostname'
+import { plural } from '@/utils/plural'
 import { MAX_ROUTES_PER_BATCH, normalizePrefix, routePrefixError } from '@/utils/routePrefix'
 import { otherEndpoints, primaryEndpoint, serviceDisplayName, serviceStateLabel } from '@/utils/workspace'
 import type {
@@ -272,7 +280,7 @@ import type {
 /**
  * Lists the services of this workspace (GET /api/workspace) and turns the
  * chosen ones into routes:
- * - mode "paas": PaaS routes `{subdomain_prefix, service_url}` (hostname = prefix.routeDomain);
+ * - mode "paas": Apporo (platform) routes `{subdomain_prefix, service_url}` (hostname = prefix.routeDomain);
  * - mode "hostname": local/token routes `{hostname, service, disableChunkedEncoding}`.
  * The parent decides what happens on submit and closes the dialog.
  */
@@ -366,7 +374,7 @@ const limit = computed(() => (isPaas.value ? MAX_ROUTES_PER_BATCH : Number.POSIT
 const workspaceLabel = computed(() => {
   const name = info.value?.workspace?.name
   const namespace = info.value?.namespace
-  if (name && namespace) return `${name}（${namespace}）`
+  if (name && namespace) return `${name} (${namespace})`
   return name || namespace || ''
 })
 
@@ -376,7 +384,7 @@ const domain = ref(props.mode === 'hostname' ? readStoredDomain() : '')
 const domainValue = computed(() => domain.value.trim().toLowerCase().replace(/^\.+|\.+$/g, ''))
 const domainError = computed<string | null>(() => {
   if (isPaas.value) return null
-  if (!domainValue.value) return '請輸入網域，例如 example.com'
+  if (!domainValue.value) return 'Enter a domain, such as example.com'
   return hostnameError(domainValue.value)
 })
 
@@ -393,7 +401,7 @@ function toRow(service: WorkspaceService): Row {
 }
 
 function labelError(label: string, hostname: string): string | null {
-  if (!label) return '請輸入名稱'
+  if (!label) return 'Enter a name'
   if (domainError.value) return null // the domain field shows its own error
   return hostnameError(hostname)
 }
@@ -414,10 +422,12 @@ const entries = computed<Entry[]>(() => {
     const endpoint = service.endpoints.find((item) => item.url === row.endpointUrl)
     let localError = isPaas.value ? routePrefixError(value) : labelError(value, target)
     if (!localError && existing.has(target)) {
-      localError = isPaas.value ? '這個安全存取服務已有相同前綴的路由' : '路由清單裡已有這個 hostname'
+      localError = isPaas.value
+        ? 'This Security Access service already has a route with this prefix'
+        : 'This hostname is already in the route list'
     }
-    if (!localError && row.selected && (counts.get(target) ?? 0) > 1) localError = '與其他勾選的服務重複'
-    if (!localError && !endpoint) localError = '請選擇連接埠'
+    if (!localError && row.selected && (counts.get(target) ?? 0) > 1) localError = 'Same as another selected service'
+    if (!localError && !endpoint) localError = 'Choose a port'
     const verdict = isPaas.value && !localError ? verdicts[value] : undefined
     const error = localError ?? (verdict?.state === 'unavailable' ? verdict.reason : null)
     return {
@@ -481,9 +491,9 @@ async function checkAvailability(): Promise<void> {
           const result = await checkRoutePrefix(prefix)
           verdicts[prefix] = result.available
             ? { state: 'available', reason: '' }
-            : { state: 'unavailable', reason: result.reason || '這個前綴已被使用' }
+            : { state: 'unavailable', reason: result.reason || 'This prefix is already in use' }
         } catch (cause) {
-          verdicts[prefix] = { state: 'unknown', reason: cause instanceof Error ? cause.message : '暫時無法檢查' }
+          verdicts[prefix] = { state: 'unknown', reason: cause instanceof Error ? cause.message : 'please try again later' }
         }
       })
     )
@@ -523,8 +533,10 @@ const canSubmit = computed(
 )
 
 const submitLabel = computed(() => {
-  if (props.busy) return '處理中…'
-  return isPaas.value ? `一次開通 ${selectedCount.value} 個` : `加入 ${selectedCount.value} 條路由`
+  if (props.busy) return 'Working…'
+  return isPaas.value
+    ? `Publish ${plural(selectedCount.value, 'service')}`
+    : `Add ${plural(selectedCount.value, 'route')}`
 })
 
 function submit(): void {
@@ -549,14 +561,14 @@ function submit(): void {
 /* ---- display helpers ---- */
 
 function preview(entry: Entry): string {
-  if (isPaas.value) return `${entry.value || '前綴'}.${props.routeDomain || '網域'}`
-  return `${entry.value || '名稱'}.${domainValue.value || '網域'}`
+  if (isPaas.value) return `${entry.value || 'prefix'}.${props.routeDomain || 'your-domain'}`
+  return `${entry.value || 'name'}.${domainValue.value || 'your-domain'}`
 }
 
 function readiness(service: WorkspaceService): { label: string; tone: string } {
-  if (service.ready === true) return { label: '就緒', tone: 'bg-emerald-100 text-emerald-800' }
-  if (service.ready === false) return { label: '未就緒', tone: 'bg-amber-100 text-amber-800' }
-  return { label: '狀態未知', tone: 'bg-gray-100 text-gray-600' }
+  if (service.ready === true) return { label: 'Ready', tone: 'bg-emerald-100 text-emerald-800' }
+  if (service.ready === false) return { label: 'Not ready', tone: 'bg-amber-100 text-amber-800' }
+  return { label: 'Status unknown', tone: 'bg-gray-100 text-gray-600' }
 }
 
 function endpointLabel(endpoint: WorkspaceEndpoint): string {
@@ -578,7 +590,7 @@ async function load(): Promise<void> {
     rows.value = data.available ? (data.services ?? []).map(toRow) : []
   } catch (cause) {
     info.value = null
-    loadError.value = cause instanceof Error ? cause.message : '無法讀取工作區服務'
+    loadError.value = cause instanceof Error ? cause.message : 'Could not load the workspace services'
   } finally {
     loading.value = false
   }

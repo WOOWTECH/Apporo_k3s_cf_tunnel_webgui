@@ -29,11 +29,11 @@ function mountWizard() {
 describe('SetupWizard', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
-    document.cookie = 'csrftoken=tok123'
+    document.cookie = 'apporo_csrftoken=tok123'
   })
   afterEach(() => vi.unstubAllGlobals())
 
-  it('無 cert → 顯示步驟 A(連結帳號)', async () => {
+  it('no cert → shows step A (link account)', async () => {
     vi.stubGlobal(
       'fetch',
       stateOnly({ has_cert: false, has_tunnel: false, tunnel_uuid: null, mode: 'local' })
@@ -45,7 +45,7 @@ describe('SetupWizard', () => {
     expect(wrapper.find('[data-test="step-b"]').exists()).toBe(false)
   })
 
-  it('有 cert 無 tunnel → 顯示步驟 B(建立 tunnel)', async () => {
+  it('cert but no tunnel → shows step B (create tunnel)', async () => {
     vi.stubGlobal(
       'fetch',
       stateOnly({ has_cert: true, has_tunnel: false, tunnel_uuid: null, mode: 'local' })
@@ -56,7 +56,7 @@ describe('SetupWizard', () => {
     expect(wrapper.find('[data-test="create-tunnel"]').exists()).toBe(true)
   })
 
-  it('有 tunnel → 顯示步驟 C(RouteEditor)', async () => {
+  it('tunnel exists → shows step C (RouteEditor)', async () => {
     vi.stubGlobal(
       'fetch',
       stateOnly({ has_cert: true, has_tunnel: true, tunnel_uuid: 'uuid-1', mode: 'local' })
@@ -67,7 +67,7 @@ describe('SetupWizard', () => {
     expect(wrapper.find('[data-test="add-row"]').exists()).toBe(true)
   })
 
-  it('步驟 C 套用失敗(422)顯示 detail 錯誤', async () => {
+  it('a failed apply in step C (422) shows the detail error', async () => {
     const fetchMock = vi.fn((url: string) => {
       if (url === '/api/setup/state') {
         return Promise.resolve({
@@ -84,7 +84,7 @@ describe('SetupWizard', () => {
         return Promise.resolve({
           ok: false,
           status: 422,
-          json: async () => ({ detail: 'ingress 驗證失敗:bad' }),
+          json: async () => ({ detail: 'ingress validation failed: bad' }),
         })
       }
       return Promise.reject(new Error(`unexpected fetch: ${url}`))
@@ -104,19 +104,19 @@ describe('SetupWizard', () => {
 
     const err = wrapper.find('[data-test="apply-error"]')
     expect(err.exists()).toBe(true)
-    expect(err.text()).toContain('ingress 驗證失敗')
+    expect(err.text()).toContain('ingress validation failed')
   })
 })
 
 describe('SetupWizard: workspace services', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
-    document.cookie = 'csrftoken=tok123'
+    document.cookie = 'apporo_csrftoken=tok123'
     window.localStorage.clear()
   })
   afterEach(() => vi.unstubAllGlobals())
 
-  it('步驟 C:從工作區加入服務 appends the picked services to the routes', async () => {
+  it('step C: “Add from workspace” appends the picked services to the routes', async () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url === '/api/setup/state') {
         return Promise.resolve(jsonResponse({ has_cert: true, has_tunnel: true, tunnel_uuid: 'uuid-1', mode: 'local' }))
@@ -128,6 +128,7 @@ describe('SetupWizard: workspace services', () => {
     await flushPromises()
 
     await wrapper.get('[data-test="add-row"]').trigger('click') // left blank: dropped when services are added
+    expect(wrapper.get('[data-test="add-from-workspace"]').text()).toBe('Add from workspace')
     await wrapper.get('[data-test="add-from-workspace"]').trigger('click')
     await flushPromises()
     await wrapper.get('[data-test="picker-domain"]').setValue('example.com')
@@ -140,7 +141,7 @@ describe('SetupWizard: workspace services', () => {
     const values = (placeholder: string) =>
       wrapper.findAll(`input[placeholder="${placeholder}"]`).map((input) => (input.element as HTMLInputElement).value)
     expect(values('app.example.com')).toEqual(['pi-1.example.com', 'omnigent-1.example.com'])
-    expect(values('http://<服務名稱>:8080')).toEqual(['http://svc-11111111-pi-agent:8080', 'http://svc-22222222-omnigent:8000'])
+    expect(values('http://<service-name>:8080')).toEqual(['http://svc-11111111-pi-agent:8080', 'http://svc-22222222-omnigent:8000'])
     expect(wrapper.find('[data-test="workspace-picker"]').exists()).toBe(false)
     expect(wrapper.get('[data-test="apply"]').attributes('disabled')).toBeUndefined()
   })
@@ -149,7 +150,10 @@ describe('SetupWizard: workspace services', () => {
     vi.stubGlobal('fetch', stateOnly({ has_cert: false, has_tunnel: false, tunnel_uuid: null, mode: 'token' }))
     const wrapper = mountWizard()
     await flushPromises()
-    expect(wrapper.get('[data-test="token-guard"]').text()).toContain('從工作區加入服務')
+    const guard = wrapper.get('[data-test="token-guard"]').text()
+    expect(guard).toContain('This instance runs in token mode')
+    expect(guard).toContain('use “Add from workspace” on the Config page')
+    expect(guard).toContain('“Copy list”')
     expect(wrapper.find('[data-test="add-from-workspace"]').exists()).toBe(false)
   })
 })

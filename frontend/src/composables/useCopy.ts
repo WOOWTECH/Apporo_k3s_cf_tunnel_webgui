@@ -38,7 +38,7 @@ export function useCopy() {
   const manualText = ref('')
   let timer: ReturnType<typeof setTimeout> | undefined
 
-  async function copy(text: string, done = '已複製'): Promise<boolean> {
+  async function copy(text: string, done = 'Copied'): Promise<boolean> {
     if (timer) clearTimeout(timer)
     manualText.value = ''
     const copied = await copyText(text)
@@ -48,7 +48,7 @@ export function useCopy() {
         feedback.value = ''
       }, 3000)
     } else {
-      feedback.value = '瀏覽器不允許自動複製，請手動選取下方文字。'
+      feedback.value = 'Your browser blocked the copy. Select the text below and copy it manually.'
       manualText.value = text
     }
     return copied

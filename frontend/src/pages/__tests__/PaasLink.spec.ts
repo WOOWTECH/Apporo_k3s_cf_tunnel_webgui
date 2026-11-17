@@ -116,9 +116,9 @@ function reviewHostnames(wrapper: Page) {
 
 enableAutoUnmount(afterEach)
 
-describe('PaasLink (PaaS edition)', () => {
+describe('PaasLink (Apporo link, k3s edition)', () => {
   beforeEach(() => {
-    document.cookie = 'csrftoken=tok123'
+    document.cookie = 'apporo_csrftoken=tok123'
     window.localStorage.clear()
   })
   afterEach(() => {
@@ -128,12 +128,14 @@ describe('PaasLink (PaaS edition)', () => {
 
   it('uses the portal URL from bootstrap and preselects the workspace this WebGUI runs in', async () => {
     const { wrapper, fetchMock } = await mountPage()
+    expect(wrapper.get('h1').text()).toBe('Link this WebGUI to Apporo Security Access')
+    expect(wrapper.get('[data-test="portal-link"]').text()).toBe('Subscribe on Apporo ↗')
     expect(wrapper.get('[data-test="portal-link"]').attributes('href')).toBe(BOOTSTRAP.portal_url)
-    expect(wrapper.html()).not.toContain('aiot.woowtech.io')
+    expect(wrapper.html()).not.toMatch(/woowtech/i)
 
     const workspaceSelect = wrapper.get('[data-test="workspace-select"]')
     expect((workspaceSelect.element as HTMLSelectElement).value).toBe('4')
-    expect(workspaceSelect.text()).toContain('my-workspace（此工作區）')
+    expect(workspaceSelect.text()).toContain('my-workspace (this workspace)')
     expect(call(fetchMock, 'GET', '/api/paas/workspaces/4/accesses')).toBeTruthy()
     expect(wrapper.find('[data-test="other-workspace-note"]').exists()).toBe(false)
 
@@ -141,7 +143,10 @@ describe('PaasLink (PaaS edition)', () => {
     await workspaceSelect.setValue('3')
     await flushPromises()
     expect(call(fetchMock, 'GET', '/api/paas/workspaces/3/accesses')).toBeTruthy()
-    expect(wrapper.get('[data-test="other-workspace-note"]').text()).toContain('只能透過「my-workspace」的安全存取服務')
+    const note = wrapper.get('[data-test="other-workspace-note"]').text()
+    expect(note).toContain('This WebGUI runs in the “my-workspace” workspace')
+    expect(note).toContain('can only be published through a Security Access service of “my-workspace”')
+    expect(note).toContain('Switch to “my-workspace”')
   })
 
   it('shows a loading hint, not "no Security Access", while a linked page reads its services', async () => {
@@ -158,8 +163,8 @@ describe('PaasLink (PaaS edition)', () => {
     vi.stubGlobal('fetch', fetchMock)
     const wrapper: Page = mount(PaasLink, { global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } } })
     await flushPromises()
-    expect(wrapper.find('[data-test="accesses-loading"]').exists()).toBe(true)
-    expect(wrapper.text()).not.toContain('這個工作區還沒有安全存取服務')
+    expect(wrapper.get('[data-test="accesses-loading"]').text()).toBe("Loading this workspace's Security Access services…")
+    expect(wrapper.text()).not.toContain('This workspace has no Security Access service yet')
     // The workspace list, the services and the accesses are read side by side.
     expect(call(fetchMock, 'GET', '/api/paas/workspaces')).toBeTruthy()
     expect(call(fetchMock, 'GET', '/api/workspace')).toBeTruthy()
@@ -172,19 +177,31 @@ describe('PaasLink (PaaS edition)', () => {
   })
 
   it('offers the picker only when the platform allows route writes', async () => {
-    const readOnly = await mountPage({ bootstrap: { routes_write: false } })
+    // Apporo does not offer the route write API: this is the path its users see.
+    const readOnly = await mountPage({ bootstrap: { routes_write: false, route_domain: 'apporo.ai' } })
     await chooseAccess(readOnly.wrapper)
     const section = readOnly.wrapper.get('[data-test="bulk-section"]')
     expect(section.find('[data-test="open-picker"]').exists()).toBe(false)
     expect(readOnly.wrapper.find('[data-test="remove-route"]').exists()).toBe(false)
-    expect(section.text()).toContain('請到 PaaS 的「應用路由」逐一新增')
+    expect(section.get('h3').text()).toBe('Publish workspace services')
+    expect(section.get('[data-test="portal-routes-help"]').text()).toBe(
+      'Apporo does not let this page add routes yet, so add them in the Apporo portal, one route per service:'
+    )
+    expect(section.text()).toContain('Open the Application tab of “my-access” with the link below.')
+    expect(section.text()).toContain('the hostname becomes <prefix>.apporo.ai')
+    expect(section.text()).toContain("paste the service's internal URL from the list below as its service URL")
+    expect(section.text()).toContain('select “Check again” above')
+    const portal = section.findAll('a').find((a) => a.text() === 'Add routes in the Apporo portal ↗')!
+    expect(portal.attributes('href')).toBe(review([]).portal_routes_url)
     const urls = section.get('[data-test="service-urls"]').text()
     expect(urls).toContain('http://svc-11111111-pi-agent:8080')
     expect(urls).toContain('http://svc-22222222-omnigent:8000')
 
     const writeText = stubClipboard()
+    expect(section.get('[data-test="copy-service-urls"]').text()).toBe('Copy list')
     await section.get('[data-test="copy-service-urls"]').trigger('click')
     await flushPromises()
+    expect(section.text()).toContain('Copied')
     expect(writeText).toHaveBeenCalledWith(
       'pi-1 → http://svc-11111111-pi-agent:8080\n' +
         'omnigent · svc-22222222 → http://svc-22222222-omnigent:8000\n' +
@@ -196,6 +213,9 @@ describe('PaasLink (PaaS edition)', () => {
     expect(writable.wrapper.find('[data-test="open-picker"]').exists()).toBe(false) // nothing reviewed yet
     await chooseAccess(writable.wrapper)
     expect(writable.wrapper.find('[data-test="service-urls"]').exists()).toBe(false)
+    expect(writable.wrapper.find('[data-test="portal-routes-help"]').exists()).toBe(false)
+    expect(writable.wrapper.get('[data-test="bulk-section"]').text()).toContain('as routes in one step, each at <prefix>.example.io')
+    expect(writable.wrapper.get('[data-test="open-picker"]').text()).toBe('Choose workspace services')
     await writable.wrapper.get('[data-test="open-picker"]').trigger('click')
     await flushPromises()
     expect(writable.wrapper.find('[data-test="workspace-picker"]').exists()).toBe(true)
@@ -227,6 +247,7 @@ describe('PaasLink (PaaS edition)', () => {
     })
     expect((post[1]!.headers as Record<string, string>)['x-csrftoken']).toBe('tok123')
     expect(wrapper.find('[data-test="workspace-picker"]').exists()).toBe(false)
+    expect(wrapper.get('[data-test="bulk-created"]').text()).toContain('Added 1 route:')
     expect(wrapper.get('[data-test="bulk-created"]').text()).toContain('pi-1.example.io')
     expect(reviewHostnames(wrapper)).toEqual(['web.example.io', 'pi-1.example.io'])
     // The page did not need to reload the review: the POST answer carried it.
@@ -241,7 +262,7 @@ describe('PaasLink (PaaS edition)', () => {
     const first = wrapper.findAll('[data-test="picker-row"]')[0]
     await first.get('[data-test="picker-field"]').setValue('web')
     await first.get('[data-test="picker-select"]').setValue(true)
-    expect(first.get('[data-test="picker-error"]').text()).toContain('已有相同前綴')
+    expect(first.get('[data-test="picker-error"]').text()).toContain('already has a route with this prefix')
     expect(first.get('[data-test="picker-preview"]').text()).toContain('web.example.io')
   })
 
@@ -249,7 +270,7 @@ describe('PaasLink (PaaS edition)', () => {
     const { wrapper } = await mountPage({
       create: {
         status: 409,
-        body: { detail: { message: '有前綴無法使用', errors: { 'pi-1': '已被其他服務使用' } } },
+        body: { detail: { message: 'Some subdomain prefixes cannot be used.', errors: { 'pi-1': 'Already used by another service' } } },
       },
     })
     await chooseAccess(wrapper)
@@ -260,13 +281,12 @@ describe('PaasLink (PaaS edition)', () => {
     await flushPromises()
 
     const bulkError = wrapper.get('[data-test="bulk-error"]').text()
-    expect(bulkError).toContain('有前綴無法使用')
-    expect(bulkError).toContain('pi-1')
-    expect(bulkError).toContain('已被其他服務使用')
-    expect(bulkError).toContain('這一批路由都沒有建立')
+    expect(bulkError).toContain('Some subdomain prefixes cannot be used.')
+    expect(bulkError).toContain('pi-1: Already used by another service')
+    expect(bulkError).toContain('None of the routes in this batch were created.')
     expect(wrapper.find('[data-test="workspace-picker"]').exists()).toBe(true)
-    expect(wrapper.get('[data-test="picker-server-error"]').text()).toContain('有前綴無法使用')
-    expect(wrapper.get('[data-test="picker-rejected"]').text()).toContain('已被其他服務使用')
+    expect(wrapper.get('[data-test="picker-server-error"]').text()).toContain('Some subdomain prefixes cannot be used.')
+    expect(wrapper.get('[data-test="picker-rejected"]').text()).toContain('Already used by another service')
     expect(reviewHostnames(wrapper)).toEqual(['web.example.io'])
   })
 
@@ -274,7 +294,11 @@ describe('PaasLink (PaaS edition)', () => {
     const { wrapper, fetchMock } = await mountPage({ remove: { status: 200, body: { deleted: true, review: review([]) } } })
     await chooseAccess(wrapper)
 
+    expect(wrapper.get('[data-test="remove-route"]').text()).toBe('Remove')
     await wrapper.get('[data-test="remove-route"]').trigger('click')
+    expect(wrapper.get('[data-test="review-route"]').text()).toContain('The hostname stops working once the route is removed. Remove it?')
+    expect(wrapper.get('[data-test="confirm-remove-route"]').text()).toBe('Remove route')
+    expect(wrapper.get('[data-test="cancel-remove-route"]').text()).toBe('Cancel')
     await wrapper.get('[data-test="cancel-remove-route"]').trigger('click')
     expect(wrapper.find('[data-test="confirm-remove-route"]').exists()).toBe(false)
     expect(call(fetchMock, 'DELETE', '/api/paas/accesses/9/routes/101')).toBeUndefined()
@@ -287,16 +311,20 @@ describe('PaasLink (PaaS edition)', () => {
     const del = call(fetchMock, 'DELETE', '/api/paas/accesses/9/routes/101')!
     expect((del[1]!.headers as Record<string, string>)['x-csrftoken']).toBe('tok123')
     expect(reviewHostnames(wrapper)).toEqual([])
-    expect(wrapper.text()).toContain('已移除 web.example.io。')
+    expect(wrapper.text()).toContain('Removed web.example.io.')
   })
 
   it('keeps the review and explains when a route cannot be removed', async () => {
-    const { wrapper } = await mountPage({ remove: { status: 403, body: { detail: '需要此工作區的管理權限' } } })
+    const { wrapper } = await mountPage({
+      remove: { status: 403, body: { detail: 'You need to be an owner or admin of this workspace to remove hostnames.' } },
+    })
     await chooseAccess(wrapper)
     await wrapper.get('[data-test="remove-route"]').trigger('click')
     await wrapper.get('[data-test="confirm-remove-route"]').trigger('click')
     await flushPromises()
-    expect(wrapper.text()).toContain('無法移除 web.example.io：需要此工作區的管理權限')
+    expect(wrapper.get('[role="alert"]').text()).toBe(
+      'Could not remove web.example.io: You need to be an owner or admin of this workspace to remove hostnames.'
+    )
     expect(reviewHostnames(wrapper)).toEqual(['web.example.io'])
   })
 
@@ -320,15 +348,46 @@ describe('PaasLink (PaaS edition)', () => {
       },
     })
     const results = wrapper.findAll('[data-test="external-result"]')
-    expect(results[0].text()).toContain('外部出現 Access 登入，與 PaaS 的公開設定不同')
+    expect(results[0].text()).toContain('An anonymous visit gets an Access login, although the route is public on Apporo')
     expect(results[0].get('p.text-xs').classes()).toContain('text-amber-700')
-    expect(results[1].text()).toContain('匿名訪問進入 Cloudflare Access 登入流程')
+    expect(results[1].text()).toContain('An anonymous visit gets the Cloudflare Access login')
     expect(results[1].get('p.text-xs').classes()).toContain('text-emerald-700')
   })
 
   it('tells users to enter workspace service URLs, not localhost', async () => {
     const { wrapper } = await mountPage()
     expect(wrapper.text()).not.toContain('http://localhost')
-    expect(wrapper.text()).toContain('http://<服務名稱>:8080')
+    expect(wrapper.text()).toContain('http://<service-name>:8080')
+  })
+
+  it('shows the device code and the verification page the platform returns', async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/paas/bootstrap') return jsonResponse({ ...BOOTSTRAP, authorized: false })
+      if (url === '/api/paas/authorization' && init?.method === 'POST') {
+        return jsonResponse({ user_code: 'WDJB-MJHT', verification_url: 'https://www.apporo.ai/device?user_code=WDJB-MJHT', expires_in: 900, interval: 5 })
+      }
+      throw new Error(`unexpected fetch ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const wrapper: Page = mount(PaasLink, { global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } } })
+    await flushPromises()
+    await wrapper.findAll('button').find((b) => b.text() === 'Get device code')!.trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('Enter this code on the Apporo device page, then select Allow')
+    expect(wrapper.text()).toContain('WDJB-MJHT')
+    const devicePage = wrapper.findAll('a').find((a) => a.text() === 'Open the device page ↗')!
+    expect(devicePage.attributes('href')).toBe('https://www.apporo.ai/device?user_code=WDJB-MJHT')
+    expect(wrapper.text()).toContain('Waiting for you to allow the connection on Apporo.')
+    const [, init] = fetchMock.mock.calls.find(([url]) => url === '/api/paas/authorization')!
+    expect((init!.headers as Record<string, string>)['x-csrftoken']).toBe('tok123')
+    // auto-unmount clears the pending authorization poll
+  })
+
+  it('shows the error and invents no portal link when the backend cannot be read', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ detail: 'Failed to connect to the Apporo platform.' }, 502)))
+    const wrapper: Page = mount(PaasLink, { global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } } })
+    await flushPromises()
+    expect(wrapper.get('[role="alert"]').text()).toBe('Failed to connect to the Apporo platform.')
+    expect(wrapper.get('[data-test="portal-link"]').attributes('href')).toBeUndefined()
   })
 })

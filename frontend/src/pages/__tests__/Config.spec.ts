@@ -34,7 +34,7 @@ function lastPut(fetchMock: ReturnType<typeof backend>) {
 describe('Config', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
-    document.cookie = 'csrftoken=tok123'
+    document.cookie = 'apporo_csrftoken=tok123'
   })
   afterEach(() => vi.unstubAllGlobals())
 
@@ -57,7 +57,7 @@ describe('Config', () => {
     const wrapper = mountConfig()
     await flushPromises()
     await wrapper.find('textarea').setValue('--token=abc')
-    expect(wrapper.text()).toContain('不是允許的 run parameter')
+    expect(wrapper.text()).toContain('is not an allowed run parameter')
     expect(wrapper.find('button[type="submit"]').attributes('disabled')).toBeDefined()
   })
 
@@ -66,7 +66,7 @@ describe('Config', () => {
     vi.stubGlobal('fetch', fetchMock)
     const wrapper = mountConfig()
     await flushPromises()
-    await wrapper.findAll('button').find((b) => b.text().includes('移除 token'))!.trigger('click')
+    await wrapper.findAll('button').find((b) => b.text().includes('Remove the token'))!.trigger('click')
     await wrapper.find('form').trigger('submit')
     await flushPromises()
     const put = lastPut(fetchMock)
@@ -74,11 +74,12 @@ describe('Config', () => {
     expect(put.body.mode).toBe('local')
   })
 
-  it('a PaaS-managed token hides the token input and locks the mode', async () => {
+  it('an Apporo-managed token hides the token input and locks the mode', async () => {
     vi.stubGlobal('fetch', backend(baseConfig({ mode: 'token', tunnel_token_set: true, tunnel_token_managed_by_paas: true })))
     const wrapper = mountConfig()
     await flushPromises()
-    expect(wrapper.text()).toContain('由 WOOW PaaS 自動管理')
+    expect(wrapper.text()).toContain('This credential is managed automatically by Apporo')
+    expect(wrapper.text()).toContain('release the binding on the Apporo Link page')
     expect(wrapper.find('select').attributes('disabled')).toBeDefined()
   })
 })
@@ -86,7 +87,7 @@ describe('Config', () => {
 describe('Config: workspace services', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
-    document.cookie = 'csrftoken=tok123'
+    document.cookie = 'apporo_csrftoken=tok123'
     window.localStorage.clear()
   })
   afterEach(() => {
@@ -106,13 +107,14 @@ describe('Config: workspace services', () => {
     return wrapper.findAll(`input[placeholder="${placeholder}"]`).map((input) => (input.element as HTMLInputElement).value)
   }
 
-  it('從工作區加入服務 appends the picked services to the routes, and Save sends them', async () => {
+  it('“Add from workspace” appends the picked services to the routes, and Save sends them', async () => {
     const old = { hostname: 'old.example.com', service: 'http://svc-old:80', disableChunkedEncoding: false }
     const fetchMock = backendWithWorkspace(baseConfig({ routes: [old] }))
     vi.stubGlobal('fetch', fetchMock)
     const wrapper = mountConfig()
     await flushPromises()
     expect(wrapper.find('[data-test="copy-routes"]').exists()).toBe(false) // local mode
+    expect(wrapper.get('[data-test="add-from-workspace"]').text()).toBe('Add from workspace')
 
     await wrapper.get('[data-test="add-from-workspace"]').trigger('click')
     await flushPromises()
@@ -123,7 +125,7 @@ describe('Config: workspace services', () => {
 
     expect(wrapper.find('[data-test="workspace-picker"]').exists()).toBe(false)
     expect(routeInputs(wrapper, 'app.example.com')).toEqual(['old.example.com', 'pi-1.example.com'])
-    expect(routeInputs(wrapper, 'http://<服務名稱>:8080')).toEqual(['http://svc-old:80', 'http://svc-11111111-pi-agent:8080'])
+    expect(routeInputs(wrapper, 'http://<service-name>:8080')).toEqual(['http://svc-old:80', 'http://svc-11111111-pi-agent:8080'])
 
     await wrapper.find('form').trigger('submit')
     await flushPromises()
@@ -147,11 +149,12 @@ describe('Config: workspace services', () => {
     const writeText = stubClipboard()
     const wrapper = mountConfig()
     await flushPromises()
-    expect(wrapper.text()).toContain('Token 模式下,ingress 路由由 Cloudflare 後台或 PaaS 管理')
+    expect(wrapper.text()).toContain('In token mode, ingress routes are managed in the Cloudflare dashboard or on Apporo')
+    expect(wrapper.get('[data-test="copy-routes"]').text()).toBe('Copy list')
     await wrapper.get('[data-test="copy-routes"]').trigger('click')
     await flushPromises()
     expect(writeText).toHaveBeenCalledWith('a.example.com → http://svc-a:8080\nb.example.com → http://svc-b:80')
-    expect(wrapper.text()).toContain('已複製')
+    expect(wrapper.text()).toContain('Copied')
   })
 
   it('shows the list for manual copying when the browser refuses the clipboard', async () => {
@@ -168,7 +171,7 @@ describe('Config: workspace services', () => {
     await flushPromises()
     await wrapper.get('[data-test="copy-routes"]').trigger('click')
     await flushPromises()
-    expect(wrapper.text()).toContain('瀏覽器不允許自動複製')
+    expect(wrapper.text()).toContain('Your browser blocked the copy. Select the text below and copy it manually.')
     const manual = wrapper.findAll('textarea').find((area) => (area.element as HTMLTextAreaElement).readOnly)!
     expect((manual.element as HTMLTextAreaElement).value).toBe('a.example.com → http://svc-a:8080')
   })

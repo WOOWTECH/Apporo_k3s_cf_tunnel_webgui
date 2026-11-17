@@ -40,13 +40,13 @@ describe('routePrefixError', () => {
   })
 
   it.each([
-    ['', '請輸入'],
-    ['ab', '3 到 63'],
-    ['a'.repeat(64), '3 到 63'],
-    ['-pi', '開頭與結尾'],
-    ['pi-', '開頭與結尾'],
-    ['pi_1', '小寫英文'],
-    ['pi.1', '小寫英文'],
+    ['', 'Enter a subdomain prefix'],
+    ['ab', '3 to 63 characters'],
+    ['a'.repeat(64), '3 to 63 characters'],
+    ['-pi', 'cannot start or end with "-"'],
+    ['pi-', 'cannot start or end with "-"'],
+    ['pi_1', 'lowercase letters, digits and "-"'],
+    ['pi.1', 'lowercase letters, digits and "-"'],
   ])('rejects %j', (prefix, fragment) => {
     expect(routePrefixError(prefix)).toContain(fragment)
   })

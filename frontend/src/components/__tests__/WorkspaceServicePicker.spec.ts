@@ -64,17 +64,23 @@ describe('WorkspaceServicePicker', () => {
   it('shows only the reason when the workspace is not available', async () => {
     const { wrapper } = await mountPicker(
       { mode: 'paas', routeDomain: 'example.io' },
-      { available: false, reason: '這個 WebGUI 沒有讀取 Kubernetes 服務的權限' }
+      { available: false, reason: 'This WebGUI is not allowed to list the workspace services.' }
     )
-    expect(wrapper.get('[data-test="picker-unavailable"]').text()).toBe('這個 WebGUI 沒有讀取 Kubernetes 服務的權限')
+    expect(wrapper.get('[data-test="picker-unavailable"]').text()).toBe('This WebGUI is not allowed to list the workspace services.')
     expect(wrapper.find('[data-test="picker-row"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="picker-submit"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="picker-check"]').exists()).toBe(false)
-    expect(wrapper.get('[data-test="picker-cancel"]').text()).toBe('關閉')
+    expect(wrapper.get('[data-test="picker-cancel"]').text()).toBe('Close')
   })
 
   it('paas: rows start unchecked with the suggested prefix and the primary endpoint', async () => {
     const { wrapper } = await mountPicker({ mode: 'paas', routeDomain: 'example.io' })
+    expect(wrapper.get('h2').text()).toBe('Publish workspace services')
+    expect(wrapper.text()).toContain('Each one becomes a public route at <prefix>.example.io.')
+    expect(wrapper.text()).toContain('my-workspace (paas-ws-0a1b2c3d) · 0 of 3 selected')
+    expect(row(wrapper, 'pi-1').text()).toContain('Subdomain prefix')
+    expect(wrapper.get('[data-test="picker-check"]').text()).toBe('Check availability')
+    expect(wrapper.get('[data-test="picker-cancel"]').text()).toBe('Cancel')
     const boxes = wrapper.findAll('[data-test="picker-select"]')
     expect(boxes).toHaveLength(3)
     expect(boxes.every((box) => !(box.element as HTMLInputElement).checked)).toBe(true)
@@ -85,12 +91,12 @@ describe('WorkspaceServicePicker', () => {
     expect(row(wrapper, 'omnigent · svc-22222222').exists()).toBe(true)
     expect((row(wrapper, 'pi-1').get('[data-test="picker-endpoint"]').element as HTMLSelectElement).value)
       .toBe('http://svc-11111111-pi-agent:8080')
-    expect(submitButton(wrapper).text()).toBe('一次開通 0 個')
+    expect(submitButton(wrapper).text()).toBe('Publish 0 services')
     expect(submitButton(wrapper).attributes('disabled')).toBeDefined()
 
     await select(wrapper, 'pi-1')
     await select(wrapper, 'omnigent · svc-22222222')
-    expect(submitButton(wrapper).text()).toBe('一次開通 2 個')
+    expect(submitButton(wrapper).text()).toBe('Publish 2 services')
     expect(submitButton(wrapper).attributes('disabled')).toBeUndefined()
     await submitButton(wrapper).trigger('click')
     expect(submitted(wrapper)).toEqual([
@@ -102,7 +108,8 @@ describe('WorkspaceServicePicker', () => {
   it('paas: another port can be chosen, and TCP ports carry a browser warning', async () => {
     const { wrapper } = await mountPicker({ mode: 'paas', routeDomain: 'example.io' })
     const pi = () => row(wrapper, 'pi-1')
-    expect(pi().get('[data-test="picker-endpoint"]').find('optgroup[label="其他連接埠"]').exists()).toBe(true)
+    expect(pi().get('[data-test="picker-endpoint"]').find('optgroup[label="Other ports"]').exists()).toBe(true)
+    expect(pi().get('[data-test="picker-endpoint"]').text()).toContain('http://svc-11111111-pi-agent:8080 · http (default)')
     expect(pi().find('[data-test="picker-tcp-warning"]').exists()).toBe(false)
     expect(row(wrapper, 'cache').find('[data-test="picker-tcp-warning"]').exists()).toBe(true)
 
@@ -119,11 +126,11 @@ describe('WorkspaceServicePicker', () => {
     const error = (name: string) => row(wrapper, name).find('[data-test="picker-error"]')
 
     await select(wrapper, 'pi-1')
-    expect(error('pi-1').text()).toContain('已有相同前綴')
+    expect(error('pi-1').text()).toBe('This Security Access service already has a route with this prefix')
     expect(submitButton(wrapper).attributes('disabled')).toBeDefined()
 
     await field('pi-1').setValue('bad_prefix')
-    expect(error('pi-1').text()).toContain('小寫英文')
+    expect(error('pi-1').text()).toContain('lowercase letters, digits and "-"')
     expect(submitButton(wrapper).attributes('disabled')).toBeDefined()
 
     await field('pi-1').setValue(' Pi-2 ')
@@ -132,8 +139,8 @@ describe('WorkspaceServicePicker', () => {
 
     await select(wrapper, 'cache')
     await field('cache').setValue('pi-2')
-    expect(error('pi-1').text()).toContain('重複')
-    expect(error('cache').text()).toContain('重複')
+    expect(error('pi-1').text()).toBe('Same as another selected service')
+    expect(error('cache').text()).toBe('Same as another selected service')
     expect(submitButton(wrapper).attributes('disabled')).toBeDefined()
 
     await field('cache').setValue('cache-1')
@@ -144,7 +151,7 @@ describe('WorkspaceServicePicker', () => {
     ])
   })
 
-  it('paas: 全選 takes at most 10 services and locks the rest', async () => {
+  it('paas: “Select all” takes at most 10 services and locks the rest', async () => {
     const many = Array.from({ length: 12 }, (_, i) =>
       service({
         release: `svc-${i}`,
@@ -159,17 +166,19 @@ describe('WorkspaceServicePicker', () => {
     await wrapper.get('[data-test="picker-select-all"]').setValue(true)
     expect(boxes().filter((box) => box.checked)).toHaveLength(10)
     expect(boxes().filter((box) => !box.checked).every((box) => box.disabled)).toBe(true)
-    expect(wrapper.find('[data-test="picker-limit"]').exists()).toBe(true)
-    expect(submitButton(wrapper).text()).toBe('一次開通 10 個')
+    expect(wrapper.get('[data-test="picker-limit"]').text()).toBe(
+      'You can publish up to 10 services at a time. Publish the rest in another batch.'
+    )
+    expect(submitButton(wrapper).text()).toBe('Publish 10 services')
 
     await wrapper.get('[data-test="picker-select-all"]').setValue(false)
     expect(boxes().some((box) => box.checked)).toBe(false)
     expect(boxes().some((box) => box.disabled)).toBe(false)
   })
 
-  it('paas: 檢查可用性 checks each selected prefix and shows ✓ or the reason', async () => {
+  it('paas: “Check availability” checks each selected prefix and shows ✓ or the reason', async () => {
     const { wrapper, fetchMock } = await mountPicker({ mode: 'paas', routeDomain: 'example.io' }, workspaceInfo(), {
-      'omnigent-1': { prefix: 'omnigent-1', available: false, reason: '已被其他服務使用' },
+      'omnigent-1': { prefix: 'omnigent-1', available: false, reason: 'Already used by another service' },
     })
     await select(wrapper, 'pi-1')
     await select(wrapper, 'omnigent · svc-22222222')
@@ -180,8 +189,8 @@ describe('WorkspaceServicePicker', () => {
     expect(urls).toContain('/api/paas/routes/check?prefix=pi-1')
     expect(urls).toContain('/api/paas/routes/check?prefix=omnigent-1')
     expect(urls.filter((url) => url.startsWith('/api/paas/routes/check'))).toHaveLength(2)
-    expect(row(wrapper, 'pi-1').get('[data-test="picker-available"]').text()).toContain('✓')
-    expect(row(wrapper, 'omnigent · svc-22222222').get('[data-test="picker-error"]').text()).toBe('已被其他服務使用')
+    expect(row(wrapper, 'pi-1').get('[data-test="picker-available"]').text()).toBe('✓ Available')
+    expect(row(wrapper, 'omnigent · svc-22222222').get('[data-test="picker-error"]').text()).toBe('Already used by another service')
     expect(submitButton(wrapper).attributes('disabled')).toBeDefined()
 
     // A different prefix is a different question: the old answer no longer applies.
@@ -202,38 +211,41 @@ describe('WorkspaceServicePicker', () => {
     await select(wrapper, 'pi-1')
     const serverError: RouteBatchError = {
       status: 409,
-      message: '有前綴無法使用',
-      errors: { 'pi-1': '已被其他服務使用', quota: '超過方案的路由上限' },
+      message: 'Some subdomain prefixes cannot be used.',
+      errors: { 'pi-1': 'Already used by another service', quota: 'The plan does not allow more routes' },
     }
     await wrapper.setProps({ serverError })
-    expect(row(wrapper, 'pi-1').get('[data-test="picker-rejected"]').text()).toContain('已被其他服務使用')
+    expect(row(wrapper, 'pi-1').get('[data-test="picker-rejected"]').text()).toBe('Rejected last time: Already used by another service')
     const top = wrapper.get('[data-test="picker-server-error"]').text()
-    expect(top).toContain('有前綴無法使用')
-    expect(top).toContain('超過方案的路由上限')
-    expect(top).not.toContain('已被其他服務使用') // shown on its row instead
+    expect(top).toContain('Some subdomain prefixes cannot be used.')
+    expect(top).toContain('quota: The plan does not allow more routes')
+    expect(top).not.toContain('Already used by another service') // shown on its row instead
     expect(submitButton(wrapper).attributes('disabled')).toBeUndefined()
 
     await wrapper.setProps({ busy: true })
     expect(submitButton(wrapper).attributes('disabled')).toBeDefined()
-    expect(submitButton(wrapper).text()).toBe('處理中…')
+    expect(submitButton(wrapper).text()).toBe('Working…')
   })
 
   it('hostname: builds Route items from the name and the domain, and remembers the domain', async () => {
     const { wrapper } = await mountPicker({ mode: 'hostname', existing: ['pi-1.example.com'] })
+    expect(wrapper.get('h2').text()).toBe('Add services from this workspace')
+    expect(wrapper.find('[data-test="picker-check"]').exists()).toBe(false)
     expect((wrapper.get('[data-test="picker-domain"]').element as HTMLInputElement).value).toBe('')
     await select(wrapper, 'omnigent · svc-22222222')
-    expect(wrapper.get('[data-test="picker-domain-error"]').text()).toContain('請輸入網域')
-    expect(submitButton(wrapper).text()).toBe('加入 1 條路由')
+    expect(wrapper.get('[data-test="picker-domain-error"]').text()).toBe('Enter a domain, such as example.com')
+    expect(submitButton(wrapper).text()).toBe('Add 1 route')
     expect(submitButton(wrapper).attributes('disabled')).toBeDefined()
 
     await wrapper.get('[data-test="picker-domain"]').setValue('Example.com')
     expect(row(wrapper, 'omnigent · svc-22222222').get('[data-test="picker-preview"]').text()).toContain('omnigent-1.example.com')
 
     await select(wrapper, 'pi-1')
-    expect(row(wrapper, 'pi-1').get('[data-test="picker-error"]').text()).toContain('已有這個 hostname')
+    expect(row(wrapper, 'pi-1').get('[data-test="picker-error"]').text()).toBe('This hostname is already in the route list')
+    expect(submitButton(wrapper).text()).toBe('Add 2 routes')
     expect(submitButton(wrapper).attributes('disabled')).toBeDefined()
     await row(wrapper, 'pi-1').get('[data-test="picker-field"]').setValue('bad name')
-    expect(row(wrapper, 'pi-1').get('[data-test="picker-error"]').text()).toContain('hostname 格式不正確')
+    expect(row(wrapper, 'pi-1').get('[data-test="picker-error"]').text()).toContain('Invalid hostname')
     await row(wrapper, 'pi-1').get('[data-test="picker-select"]').setValue(false)
 
     await submitButton(wrapper).trigger('click')
@@ -267,17 +279,17 @@ describe('WorkspaceServicePicker', () => {
     let calls = 0
     vi.stubGlobal('fetch', vi.fn(async () => {
       calls += 1
-      return calls === 1 ? jsonResponse({ detail: '無法連到 Kubernetes API' }, 502) : jsonResponse(workspaceInfo([PI, CACHE]))
+      return calls === 1 ? jsonResponse({ detail: 'Cannot reach the Kubernetes API.' }, 502) : jsonResponse(workspaceInfo([PI, CACHE]))
     }))
     const wrapper: Picker = mount(WorkspaceServicePicker, { props: { mode: 'paas', routeDomain: 'example.io' } })
     await flushPromises()
-    expect(wrapper.text()).toContain('無法連到 Kubernetes API')
-    await wrapper.findAll('button').find((button) => button.text() === '重試')!.trigger('click')
+    expect(wrapper.text()).toContain('Cannot reach the Kubernetes API.')
+    await wrapper.findAll('button').find((button) => button.text() === 'Retry')!.trigger('click')
     await flushPromises()
     expect(wrapper.findAll('[data-test="picker-row"]')).toHaveLength(2)
   })
 
-  it('emits close from 取消, the × button and Escape', async () => {
+  it('emits close from Cancel, the × button and Escape', async () => {
     const { wrapper } = await mountPicker({ mode: 'paas', routeDomain: 'example.io' })
     await wrapper.get('[data-test="picker-cancel"]').trigger('click')
     await wrapper.get('[data-test="picker-close"]').trigger('click')
@@ -295,12 +307,12 @@ describe('WorkspaceServicePicker', () => {
     expect(box.disabled).toBe(true)
     await wrapper.get('[data-test="picker-select-all"]').setValue(true)
     expect(box.checked).toBe(false)
-    expect(submitButton(wrapper).text()).toBe('一次開通 1 個')
+    expect(submitButton(wrapper).text()).toBe('Publish 1 service')
   })
 
   it('shows an empty state for a workspace without other services', async () => {
     const { wrapper } = await mountPicker({ mode: 'paas', routeDomain: 'example.io' }, workspaceInfo([]))
-    expect(wrapper.find('[data-test="picker-empty"]').exists()).toBe(true)
+    expect(wrapper.get('[data-test="picker-empty"]').text()).toBe('This workspace has no other services.')
     expect(submitButton(wrapper).attributes('disabled')).toBeDefined()
   })
 })
