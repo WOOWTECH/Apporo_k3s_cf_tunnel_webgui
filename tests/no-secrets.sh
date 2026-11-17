@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tests/no-secrets.sh: refuse to ship a credential in this repo. The tunnel token, the
-# CSRF secret and any htpasswd live on the host (the data volume, ~/.config/woow-cf-tunnel),
-# never here; config/*.env.example holds settings only.
+# CSRF secret and the admin password live in the pod (the data volume, the chart Secret),
+# never here.
 #
 # Checked everywhere: private keys, and KEY=<16+ chars> for password/secret/token/api-key
 # names. Checked outside tests/ and frontend/ (which carry obvious placeholders): strings

@@ -1,0 +1,126 @@
+# Cloudflare Tunnel WebGUI, PaaS edition. Deployed per workspace by the WOOW
+# PaaS operator as release svc-<ref8> into a paas-ws-* namespace.
+
+image:
+  repository: ghcr.io/woowtech/cf-tunnel-webgui
+  tag: ""             # "" → .Chart.AppVersion; the platform pins tag@sha256
+  pullPolicy: IfNotPresent
+# The operator sets this to the namespace's registry secret (paas-registry).
+imagePullSecrets: []
+global:
+  imagePullSecrets: []
+replicaCount: 1        # one connector per tunnel; the PVC is ReadWriteOnce
+
+# ── The app (FastAPI + cloudflared child) ─────────────────────────────────────
+app:
+  # Loopback only: the auth proxy is the pod's only entrance.
+  port: 8000
+  metricsAddr: "127.0.0.1:20241"
+  extraEnv: []
+
+# The platform that the "PaaS 連結" page links to (OAuth device flow) and, when
+# routesWrite is on, where the WebGUI adds Security Access routes.
+paas:
+  apiBase: "https://aiot.woowtech.io"
+  portalBase: ""            # "" → apiBase
+  clientId: "woow-ha-smart-home"
+  routesWrite: false        # needs the platform's security-access:routes scope
+  routeDomain: "woowtech.io"
+  instanceLabel: ""         # "" → "Woow Cloudflared (PaaS · <release>)"
+
+# Top-level resources apply to the app container (the platform writes plan
+# sizes here when the plan has them).
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: "1"
+    memory: 384Mi
+
+# ── Auth proxy (nginx sidecar; the tenant entrance) ───────────────────────────
+authProxy:
+  image:
+    repository: nginxinc/nginx-unprivileged
+    tag: "1.27-alpine"
+    pullPolicy: IfNotPresent
+  port: 8080
+  basicAuthUsername: "admin"
+  clientMaxBodySize: 1m
+  resources:
+    requests: {cpu: 10m, memory: 16Mi}
+    limits: {cpu: 200m, memory: 64Mi}
+  initResources:
+    requests: {cpu: 10m, memory: 16Mi}
+    limits: {cpu: 100m, memory: 32Mi}
+
+# ── Tenant credential (platform has_admin_gui / helm_secret carrier) ──────────
+config:
+  sensitive:
+    # The GUI's basic-auth password. "" → generated once and kept across
+    # upgrades (lookup). The platform pins it here; reset = upgrade + restart.
+    admin_password: ""
+auth:
+  existingSecret: ""   # a Secret with key admin_password → no Secret rendered
+
+service:
+  type: ClusterIP
+  port: 8080
+
+# /data: settings, the tunnel token, cert.pem, tunnel.json, the PaaS link state.
+persistence:
+  enabled: true
+  size: 1Gi
+  accessModes: [ReadWriteOnce]
+  storageClass: ""
+  existingClaim: ""
+
+# Listing this workspace's Services (the "工作區服務" picker).
+rbac:
+  create: true
+serviceAccount:
+  create: true
+  name: ""
+
+networkPolicy:
+  # Egress to the Kubernetes API for the picker. On CNIs that match egress
+  # after DNAT, the control-plane node IPs are needed besides the Service IP;
+  # the platform injects the cluster's list.
+  apiServerCidrs:
+    - 10.43.0.1/32
+  apiServerPorts: [443, 6443]
+
+podSecurityContext:
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+
+startupProbe:
+  periodSeconds: 5
+  failureThreshold: 36
+readinessProbe:
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+livenessProbe:
+  periodSeconds: 30
+  timeoutSeconds: 10
+  failureThreshold: 5
+
+terminationGracePeriodSeconds: 40
+timezone: Asia/Taipei
+nodeSelector: {}
+affinity: {}
+tolerations: []
+podLabels: {}
+podAnnotations: {}
+nameOverride: ""
+fullnameOverride: ""

@@ -147,6 +147,8 @@ async def test_unlinked_offers_real_portal_entry(client):
         "portal_url": "https://aiot.woowtech.io/woow#/workspaces",
         "connection": None,
         "release_pending": False,
+        "routes_write": False,
+        "route_domain": "woowtech.io",
     }
 
 
@@ -205,7 +207,7 @@ async def test_protected_service_claims_and_starts_in_token_mode(
     args = stoppable_pm.start.await_args.args[0]
     assert args[-2:] == ["--token-file", str(token_file)]
     assert not any("PRIVATE_TUNNEL_TOKEN" in a for a in args)
-    assert any("instance_label=Woow Cloudflared (Podman)" in unquote_plus(path) for path, _ in fake_paas)
+    assert any("instance_label=Woow Cloudflared (PaaS)" in unquote_plus(path) for path, _ in fake_paas)
     state = _link(tmp_config_dir)
     assert state["connection"]["access_id"] == 25 and state["instance_uid"]
     assert "PRIVATE_TUNNEL_TOKEN" not in (tmp_config_dir / "paas-link.json").read_text()

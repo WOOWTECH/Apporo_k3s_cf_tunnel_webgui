@@ -1,12 +1,12 @@
-# Cloudflare Tunnel Web GUI: FastAPI + Vue, with cloudflared as a child process.
-# scripts/install.sh builds this as localhost/woow-cf-tunnel:<VERSION>-<git-sha12>
-# and the Quadlet unit runs it with Pull=never.
+# Cloudflare Tunnel WebGUI, PaaS edition: FastAPI + Vue, with cloudflared as a
+# supervised child process. Built by .github/workflows/release.yml and pushed to
+# ghcr.io/woowtech/cf-tunnel-webgui; deployed by charts/cf-tunnel-webgui.
 
-# ── Stage 1: Build Vue frontend ──────────────────────────
-FROM node:22-alpine AS frontend-build
+# ── Stage 1: Build the Vue frontend ──────────────────────
+FROM --platform=$BUILDPLATFORM node:22-alpine AS frontend-build
 WORKDIR /build
-COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm ci --ignore-scripts 2>/dev/null || npm install
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --ignore-scripts
 COPY frontend/ ./
 RUN npm run build
 
@@ -14,18 +14,18 @@ RUN npm run build
 FROM python:3.12-slim
 WORKDIR /app
 
-# tini for PID 1 signal handling; curl + ca-certificates to fetch cloudflared
+# tini for PID 1 signal handling; curl for the in-pod probes (the app listens on
+# loopback only) and to fetch cloudflared.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends tini curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # --- cloudflared binary (multi-arch), pinned by version AND checksum ---
 # The SHA256s are the GitHub release asset digests of this exact version.
-# Bump all three together (scripts/upgrade.sh then rebuilds and gates the swap).
 ARG TARGETARCH
-ARG CLOUDFLARED_VERSION=2026.6.1
-ARG CLOUDFLARED_SHA256_AMD64=5861a10a438fe8ddcfebb3b830f83966cbf193edafce0fe2eeb198fbae1f7a22
-ARG CLOUDFLARED_SHA256_ARM64=59816ce9b16db71f5bc2a86d59b3632a96c8c3ee934bde2bc8641ee83a6070eb
+ARG CLOUDFLARED_VERSION=2026.7.3
+ARG CLOUDFLARED_SHA256_AMD64=9d71c677db00134c1bd4144b7783486b654ad281b1ea62b4972098d19f770f17
+ARG CLOUDFLARED_SHA256_ARM64=65259e652a7bea08bf5df603233ab22b8bf3116af8df9f9206209af6a1b955c0
 RUN set -eux; \
     # Cloudflare marked these releases "Do not use; upgrade to 2026.8.2 or later"
     # (path normalisation / trailing-slash stripping for HTTP origins).
@@ -49,30 +49,30 @@ COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/ ./backend/
-
-# Copy Vue build output from stage 1
 COPY --from=frontend-build /build/dist ./static/
 
-# Liveness probe: backend /api/health AND, when a tunnel is configured,
-# cloudflared /ready. The Quadlet unit uses it as HealthCmd=.
-COPY scripts/healthcheck.py /usr/local/bin/cf-webui-healthcheck
-RUN chmod 0755 /usr/local/bin/cf-webui-healthcheck
+# Non-root (uid 1000, the PaaS chart's runAsUser). /data is the volume; HOME is
+# where `cloudflared tunnel login` drops cert.pem before the app moves it.
+RUN groupadd -g 1000 app \
+    && useradd -u 1000 -g 1000 -d /home/app -m -s /usr/sbin/nologin app \
+    && mkdir -p /data && chown 1000:1000 /data
 
-ENV PYTHONUNBUFFERED=1
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    HOME=/home/app \
+    CF_SUPERVISE=1 \
+    CF_LOG_STDOUT=1 \
+    CF_METRICS_ADDR=127.0.0.1:20241
+USER 1000:1000
 EXPOSE 8000
 VOLUME ["/data"]
 
-LABEL org.opencontainers.image.source="https://github.com/WOOWTECH/Woow_cloudflare_tunnel_webgui" \
-      org.opencontainers.image.title="woow-cf-tunnel" \
-      org.opencontainers.image.description="Cloudflare Tunnel Web GUI with a supervised cloudflared connector"
-
-# Docker honours HEALTHCHECK; podman builds OCI images and drops it, so the
-# Quadlet unit sets HealthCmd= itself.
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD ["/usr/local/bin/cf-webui-healthcheck"]
+LABEL org.opencontainers.image.source="https://github.com/WOOWTECH/Woow_k3s_cf_tunnel_webgui" \
+      org.opencontainers.image.title="cf-tunnel-webgui" \
+      org.opencontainers.image.description="Cloudflare Tunnel WebGUI (WOOW PaaS edition) with a supervised cloudflared connector" \
+      org.opencontainers.image.licenses="MIT"
 
 ENTRYPOINT ["tini", "--"]
-# No --host/--port: uvicorn reads UVICORN_HOST / UVICORN_PORT and defaults to
-# 127.0.0.1:8000, so the image is loopback-only unless told otherwise. The
-# Quadlet unit pins UVICORN_HOST=127.0.0.1 and renders UVICORN_PORT.
+# uvicorn reads UVICORN_HOST / UVICORN_PORT (default 127.0.0.1:8000): the chart
+# keeps it on loopback behind the auth proxy.
 CMD ["uvicorn", "backend.main:app"]

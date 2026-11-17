@@ -1,0 +1,7 @@
+Cloudflare Tunnel WebGUI {{ .Chart.AppVersion }} is running as {{ include "cftw.fullname" . }}.
+
+Open it through the PaaS service URL and log in as "{{ .Values.authProxy.basicAuthUsername }}"
+with the service's admin password. From there:
+  - PaaS 連結: link a Security Access of {{ .Values.paas.apiBase }} and publish this workspace's services
+  - Config:    paste a tunnel token
+  - Setup:     log in to your own Cloudflare account

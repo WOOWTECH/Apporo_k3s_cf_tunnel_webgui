@@ -1,5 +1,44 @@
 # Changelog
 
+## 1.3.0 — PaaS edition (WOOWTECH/Woow_k3s_cf_tunnel_webgui)
+
+First release of the WOOW PaaS edition, branched from the Podman edition 1.2.1
+(WOOWTECH/Woow_cloudflare_tunnel_webgui). The five pages (Dashboard, PaaS 連結,
+Setup, Config, Logs) and the three ways to connect (PaaS link, tunnel token,
+the user's own Cloudflare login) are the same as in the Podman edition and the
+HA add-on.
+
+**Added**
+- **Workspace services** (`GET /api/workspace`): the services that run in the
+  same workspace (Kubernetes namespace), read through a namespaced, read-only
+  Role, with the platform's display names once a PaaS account is linked. One
+  picker on the PaaS link, Setup and Config pages publishes several of them at
+  once.
+- **Publish through Security Access from the WebGUI** (`POST/DELETE
+  /api/paas/accesses/{id}/routes`, `GET /api/paas/routes/check`): with the
+  platform's `security-access:routes` scope the WebGUI adds or removes the
+  Security Access's public routes itself (docs/paas-api.md).
+- **Helm chart** `charts/cf-tunnel-webgui`: one pod (the app plus an nginx
+  basic-auth proxy with the platform-managed admin password), a 1Gi volume for
+  `/data`, the Role, and an egress rule to the Kubernetes API.
+- cloudflared is supervised in the app (`CF_SUPERVISE`): a connector that exits
+  is restarted after 2, 5, 10, 30, 60 seconds; Stop ends the supervision. Its
+  redacted output also goes to stdout (`CF_LOG_STDOUT`) for `kubectl logs`.
+- `GET /api/ready`: a detail-free probe target.
+
+**Changed**
+- The PaaS address, portal address, OAuth client, device label and route domain
+  come from `PAAS_API_BASE`, `PAAS_PORTAL_BASE`, `PAAS_CLIENT_ID`,
+  `PAAS_INSTANCE_LABEL` and `PAAS_ROUTE_DOMAIN`; the chart sets them.
+- The image runs as uid 1000; `tunnel login` uses `~/.cloudflared/cert.pem` of
+  that user (`CLOUDFLARED_LOGIN_CERT` overrides it).
+- cloudflared 2026.7.3 (same as the HA add-on), still pinned by SHA256.
+- A WebSocket from a page of another origin is refused (close code 4403).
+
+**Removed**
+- Podman/Quadlet install, upgrade, backup and restore scripts, the container
+  healthcheck and their test harness. Kubernetes and the chart replace them.
+
 ## 1.2.1 — PaaS routes without Access seats
 
 - A subscription with zero Access seats can now link when its routes are explicitly public. Each protected route still requires an Access seat, a login method and a specific email allow policy.

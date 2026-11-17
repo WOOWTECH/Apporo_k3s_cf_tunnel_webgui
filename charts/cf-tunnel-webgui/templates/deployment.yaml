@@ -1,0 +1,206 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cftw.fullname" . }}
+  labels:
+    {{- include "cftw.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  # RWO PVC and one connector per tunnel → never two pods at once.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "cftw.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "cftw.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        checksum/authproxy: {{ include (print $.Template.BasePath "/auth-proxy-configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "cftw.serviceAccountName" . }}
+      # The token lets the app list this namespace's Services (rbac.create).
+      automountServiceAccountToken: {{ .Values.rbac.create }}
+      {{- with (include "cftw.imagePullSecrets" . | trim) }}
+      imagePullSecrets:
+        {{- . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        # Render the basic-auth htpasswd from the tenant admin_password ({PLAIN};
+        # strip CR/LF so a stray newline cannot add a second htpasswd line).
+        - name: authproxy-init
+          image: "{{ .Values.authProxy.image.repository }}:{{ .Values.authProxy.image.tag }}"
+          imagePullPolicy: {{ .Values.authProxy.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              CLEAN_PW=$(printf '%s' "$ADMIN_PASSWORD" | tr -d '\r\n')
+              printf '%s:{PLAIN}%s\n' "$BASIC_USER" "$CLEAN_PW" > /auth/.htpasswd
+              chmod 644 /auth/.htpasswd
+              echo "[authproxy-init] htpasswd written for user '$BASIC_USER'"
+          env:
+            - name: BASIC_USER
+              value: {{ .Values.authProxy.basicAuthUsername | quote }}
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cftw.secretName" . }}
+                  key: admin_password
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.authProxy.initResources | nindent 12 }}
+          volumeMounts:
+            - name: authproxy-auth
+              mountPath: /auth
+      containers:
+        - name: webgui
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            - name: UVICORN_HOST
+              value: "127.0.0.1"
+            - name: UVICORN_PORT
+              value: {{ .Values.app.port | quote }}
+            - name: CF_METRICS_ADDR
+              value: {{ .Values.app.metricsAddr | quote }}
+            - name: CF_SUPERVISE
+              value: "1"
+            - name: CF_LOG_STDOUT
+              value: "1"
+            - name: HOME
+              value: /home/app
+            - name: TZ
+              value: {{ .Values.timezone | quote }}
+            - name: WORKSPACE_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: SELF_RELEASE
+              value: {{ .Release.Name | quote }}
+            - name: PAAS_API_BASE
+              value: {{ .Values.paas.apiBase | quote }}
+            - name: PAAS_PORTAL_BASE
+              value: {{ .Values.paas.portalBase | default .Values.paas.apiBase | quote }}
+            - name: PAAS_CLIENT_ID
+              value: {{ .Values.paas.clientId | quote }}
+            - name: PAAS_ROUTES_WRITE
+              value: {{ .Values.paas.routesWrite | toString | quote }}
+            - name: PAAS_ROUTE_DOMAIN
+              value: {{ .Values.paas.routeDomain | quote }}
+            - name: PAAS_INSTANCE_LABEL
+              value: {{ .Values.paas.instanceLabel | default (printf "Woow Cloudflared (PaaS · %s)" .Release.Name) | quote }}
+            {{- with .Values.app.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          # The app listens on loopback only → probes run inside the container.
+          startupProbe:
+            exec:
+              command: ["curl", "-sf", "-o", "/dev/null", "http://127.0.0.1:{{ .Values.app.port }}/api/ready"]
+            {{- toYaml .Values.startupProbe | nindent 12 }}
+          readinessProbe:
+            exec:
+              command: ["curl", "-sf", "-o", "/dev/null", "http://127.0.0.1:{{ .Values.app.port }}/api/ready"]
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+          livenessProbe:
+            exec:
+              command: ["curl", "-sf", "-o", "/dev/null", "http://127.0.0.1:{{ .Values.app.port }}/api/ready"]
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: home
+              mountPath: /home/app
+            - name: app-tmp
+              mountPath: /tmp
+        - name: auth-proxy
+          image: "{{ .Values.authProxy.image.repository }}:{{ .Values.authProxy.image.tag }}"
+          imagePullPolicy: {{ .Values.authProxy.image.pullPolicy }}
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.authProxy.port }}
+              protocol: TCP
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          readinessProbe:
+            httpGet: {path: /healthz-upstream, port: http}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.authProxy.resources | nindent 12 }}
+          volumeMounts:
+            - name: authproxy-conf
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+              readOnly: true
+            - name: authproxy-conf
+              mountPath: /etc/nginx/conf.d/default.conf
+              subPath: default.conf
+              readOnly: true
+            - name: authproxy-auth
+              mountPath: /auth
+              readOnly: true
+            - name: nginx-tmp
+              mountPath: /tmp
+      volumes:
+        - name: authproxy-conf
+          configMap:
+            name: {{ include "cftw.authProxyConfigMapName" . }}
+        - name: authproxy-auth
+          emptyDir: {medium: Memory}
+        - name: nginx-tmp
+          emptyDir: {}
+        - name: home
+          emptyDir: {}
+        - name: app-tmp
+          emptyDir: {}
+        {{- if .Values.persistence.enabled }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "cftw.pvcName" . }}
+        {{- else }}
+        - name: data
+          emptyDir: {}
+        {{- end }}

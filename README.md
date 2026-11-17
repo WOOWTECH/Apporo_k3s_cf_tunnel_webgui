@@ -2,380 +2,131 @@
   <img src="frontend/public/favicon.svg" alt="CF Tunnel Logo" width="80">
 </p>
 
-<h1 align="center">Cloudflare Tunnel Web GUI</h1>
+<h1 align="center">Cloudflare Tunnel WebGUI — PaaS edition</h1>
 
 <p align="center">
-  <strong>Run and manage a Cloudflare Tunnel from a browser. One container, supervised by systemd through Podman Quadlet.</strong>
+  <strong>Publish the services of a WOOW PaaS workspace through a Cloudflare tunnel, from a browser.</strong>
 </p>
 
 <p align="center">
   <a href="README_zh-TW.md">繁體中文</a> &bull;
-  <a href="#install">Install</a> &bull;
-  <a href="#operate">Operate</a> &bull;
-  <a href="#security">Security</a> &bull;
-  <a href="#migrating-an-existing-deployment">Migrate</a> &bull;
-  <a href="#api-reference">API</a>
-</p>
-
-<p align="center">
-  <img src="https://img.shields.io/badge/Podman-4.9%2B%20(Quadlet)-892CA0?logo=podman&logoColor=white" alt="Podman">
-  <img src="https://img.shields.io/badge/systemd-user%20units-informational" alt="systemd">
-  <img src="https://img.shields.io/badge/Python-3.12-blue?logo=python&logoColor=white" alt="Python">
-  <img src="https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white" alt="FastAPI">
-  <img src="https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vuedotjs&logoColor=white" alt="Vue 3">
-  <img src="https://img.shields.io/badge/cloudflared-2026.6.1-F38020?logo=cloudflare&logoColor=white" alt="cloudflared">
-  <img src="https://img.shields.io/badge/License-MIT-green" alt="License">
+  <a href="#how-it-works">How it works</a> &bull;
+  <a href="#the-chart">The chart</a> &bull;
+  <a href="docs/paas-api.md">API contract</a> &bull;
+  <a href="#development">Development</a>
 </p>
 
 ---
 
-## Overview
+This is the third edition of the WOOW Cloudflare Tunnel web GUI. The other two
+are the [Podman edition](https://github.com/WOOWTECH/Woow_cloudflare_tunnel_webgui)
+and the [Home Assistant add-on](https://github.com/WOOWTECH/Woow_ha_cloudflare_tunnel_webgui).
+It has the same five pages and the same three ways to connect:
 
-A single container runs a FastAPI + Vue web GUI **and the `cloudflared` connector it
-supervises as a child process**. You paste a tunnel token, log in to Cloudflare from the
-GUI, or link a **WOOW PaaS** subscription, and the tunnel runs. There is no Podman socket,
-no second container, and no CLI.
+| Page | What it does |
+|---|---|
+| Dashboard | tunnel state (edge connections), start / stop / restart |
+| PaaS 連結 | link a WOOW PaaS **Security Access** with the device code, review its routes, connect, release, test the public URLs |
+| Setup | log in to **your own Cloudflare account**, create a tunnel, create DNS routes (local-managed mode) |
+| Config | paste a **tunnel token**, routes, catch-all, post-quantum, log level, run parameters |
+| Logs | live cloudflared output, secrets redacted |
 
-Since 1.2.0 the GUI has the same features as the
-[Woow Cloudflared Home Assistant add-on](https://github.com/WOOWTECH/Woow_ha_cloudflare_tunnel_webgui):
-the guided PaaS link with per-route public or Access-protected review, edge-connection status, redacted logs,
-the run-parameter allow-list and the credential-file guard. What stays add-on only is what
-needs the HA Supervisor: Ingress, `external_hostname` and `nginx_proxy_manager`. Here a
-route or a catch-all does the same job.
+What the PaaS edition adds is the **workspace**: it runs as a service inside a
+PaaS workspace and lists the other services of that workspace. Tick five
+pi-agents, give them names, and they are published in one action:
 
-From 1.2.1, a WOOW PaaS subscription with **zero Access seats** can link an
-explicitly public route. Public hostnames have no Cloudflare Access login;
-the origin application must enforce its own login. The PaaS link page labels
-these routes and requires confirmation before a new claim. Protected routes
-still require a seat, login method and specific email allow policy. Upgrading
-an existing Podman connector keeps its PaaS binding and data volume.
+- **PaaS link**: the WebGUI adds the routes to the linked Security Access through
+  the platform (`<name>.woowtech.io`), and the platform pushes them to the tunnel.
+- **Setup (your own Cloudflare)**: the routes go into the local ingress and the
+  DNS records are created with your Cloudflare login.
+- **Config (token)**: the routes of a token-mode tunnel live in the Cloudflare
+  dashboard; the picker gives you the list to enter there.
 
-`scripts/install.sh` installs it as **rootless Podman Quadlet units under user systemd**, so
-it starts at boot (with linger), restarts when it crashes, and — new in 1.1.0 — restarts
-when the *tunnel* dies while the backend is still up.
+## How it works
 
 ```mermaid
 graph LR
-    subgraph U["woow-cf-tunnel.service (systemd --user, Quadlet)"]
-        subgraph C["container woow-cf-tunnel (network=host)"]
-            API["FastAPI + Vue GUI<br/>127.0.0.1:18000"]
+    subgraph NS["workspace namespace paas-ws-…"]
+        subgraph POD["svc-… cf-tunnel-webgui pod"]
+            PROXY["nginx auth proxy :8080<br/>basic auth, admin password"]
+            APP["FastAPI + Vue<br/>127.0.0.1:8000"]
             CFD["cloudflared child<br/>metrics 127.0.0.1:20241"]
-            HC["/usr/local/bin/cf-webui-healthcheck"]
         end
-        VOL[("volume /data<br/>settings.json<br/>.tunnel_token 0600<br/>.csrf_secret")]
+        S1["pi-agent #1"]
+        S2["pi-agent #2 … #5"]
     end
+    K8S["Kubernetes API<br/>(read-only: Services)"]
+    PAAS["WOOW PaaS<br/>Security Access API"]
     EDGE["Cloudflare edge"]
-    ORIG["origins on this host<br/>localhost:22, :8123, ..."]
 
-    API -->|spawns, --token-file| CFD
-    API --- VOL
-    CFD -->|4 outbound connections| EDGE
-    EDGE -->|public hostnames| CFD --> ORIG
-    HC -->|/api/health + /ready| API
+    PROXY --> APP
+    APP -->|spawns, supervises| CFD
+    APP -->|list Services| K8S
+    APP -->|OAuth device flow, routes| PAAS
+    CFD -->|outbound| EDGE
+    EDGE -->|public hostnames| CFD --> S1 & S2
 ```
 
-**Liveness.** The container healthcheck requires the backend's `/api/health` **and**, when a
-tunnel is configured, `cloudflared`'s `/ready` with at least one edge connection. Three
-failures in a row (30s apart, after a 60s start period) make podman kill the container
-(`HealthOnFailure=kill`); `Restart=always` brings it back and the app reconnects the tunnel.
-Detection to recovery is roughly 1.5-2.5 minutes.
+- The app listens on loopback only. The pod's only entrance is the nginx proxy,
+  whose basic-auth password is the service's admin password from the platform
+  (reset it in the platform and the pod restarts with the new one).
+- cloudflared runs as a child of the app. If it exits while it should be
+  running, the app starts it again (after 2, 5, 10, 30, 60 s). The liveness
+  probe watches the app only, so a tunnel problem never restarts the pod.
+- `/data` (a 1Gi volume) keeps the settings, the tunnel token, `cert.pem`,
+  `tunnel.json` and the PaaS link state, each file 0600.
+- A route's service is an in-namespace address such as
+  `http://svc-11111111-pi-agent:8080`; the namespace network policy lets this
+  pod reach every service of the workspace and nothing in other workspaces.
 
-## Requirements
+## The chart
 
-- Ubuntu 24.04 or similar, **rootless podman 4.9.3+** (`sudo apt install podman`)
-- a user systemd session with linger (`sudo loginctl enable-linger $USER`)
-- a Cloudflare account and a tunnel token, or the GUI login flow
-- git, and enough space to build the image (~250 MB)
+`charts/cf-tunnel-webgui` follows the WOOW PaaS chart contract: one Service with
+the release's `app.kubernetes.io/instance` label on port 8080,
+`config.sensitive.admin_password` for the platform-managed password,
+`persistence.size` / `persistence.storageClass`, `imagePullSecrets` /
+`global.imagePullSecrets`, top-level `resources`.
 
-## Install
-
-```bash
-git clone https://github.com/WOOWTECH/Woow_cloudflare_tunnel_webgui.git
-cd Woow_cloudflare_tunnel_webgui
-
-scripts/install.sh          # first run: writes ~/.config/woow-cf-tunnel/woow-cf-tunnel.env
-$EDITOR ~/.config/woow-cf-tunnel/woow-cf-tunnel.env
-scripts/install.sh          # builds the image, installs the units, starts, smoke-tests
-```
-
-The image is **built locally** from this checkout and tagged
-`localhost/woow-cf-tunnel:<VERSION>-<git-sha12>`; the unit pins that tag with `Pull=never`
-(decision D3). Publishing to GHCR so hosts share one build is future work.
-
-`~/.config/woow-cf-tunnel/woow-cf-tunnel.env` holds install-time settings only, no secrets:
-
-| Key | Default | Meaning |
+| Value | Default | Meaning |
 |---|---|---|
-| `CF_DATA_VOLUME` | `cf_data` | the volume to adopt or create (existing deployments keep theirs) |
-| `UVICORN_PORT` | `18000` | GUI/API port; the unit always binds it to 127.0.0.1 |
-| `CF_METRICS_ADDR` | `127.0.0.1:20241` | cloudflared `--metrics`; must stay on loopback |
-| `AUTH_LISTEN` | `127.0.0.1:8888` | optional Basic-auth proxy listen address |
-| `AUTH_HTPASSWD` | `%h/.config/woow-cf-tunnel/htpasswd` | its password file |
+| `paas.apiBase` | `https://aiot.woowtech.io` | platform of the PaaS link |
+| `paas.portalBase` | = `apiBase` | portal links |
+| `paas.clientId` | `woow-ha-smart-home` | OAuth client (`woow-cf-tunnel-webgui` on platforms that have it) |
+| `paas.routesWrite` | `false` | the platform grants `security-access:routes` (bulk publish) |
+| `paas.routeDomain` | `woowtech.io` | hostname = `<prefix>.<routeDomain>` |
+| `rbac.create` | `true` | Role to list the namespace's Services |
+| `networkPolicy.apiServerCidrs` | `[10.43.0.1/32]` | egress to the Kubernetes API (the platform injects the cluster's control-plane IPs) |
+| `persistence.size` | `1Gi` | the `/data` volume |
 
-Values are rendered into the unit files at install time (decision D2); the containers never
-read this file. After editing it, run `scripts/upgrade.sh` (tunnel) or `scripts/install.sh`
-(auth proxy).
+The image is `ghcr.io/woowtech/cf-tunnel-webgui`, built for amd64 and arm64 by
+`.github/workflows/release.yml`.
 
-### Open the GUI
-
-It listens on 127.0.0.1 only. From your workstation:
-
-```bash
-ssh -L 18000:127.0.0.1:18000 <this host>
-# then open http://localhost:18000
-```
-
-Then use the Config page to paste your tunnel token (token mode), or the Setup wizard to log
-in to Cloudflare (local-managed mode).
-
-## Operate
+## Development
 
 ```bash
-systemctl --user show woow-cf-tunnel.service -p ActiveState,SubState,NRestarts
-journalctl --user -u woow-cf-tunnel.service -n 50
-podman inspect woow-cf-tunnel -f '{{.State.Health.Status}}'
-curl -s 127.0.0.1:20241/ready            # {"status":200,"readyConnections":4}
-tests/smoke.sh                           # the full post-install check list
+python -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
+.venv/bin/python -m pytest -m "not e2e" -q
+cd frontend && npm ci && npm test && npm run build
+helm lint --strict charts/cf-tunnel-webgui
 ```
 
-> **If this tunnel carries your SSH session, a restart drops it.** `scripts/install.sh`
-> never restarts a running tunnel; `scripts/upgrade.sh` does the restart from a detached
-> watchdog that rolls back on its own. Always keep a second way in (a tailnet, the LAN, a
-> console) before touching it remotely.
->
-> `migrate-legacy.sh`, `upgrade.sh`, `uninstall.sh` and `restore.sh` work out which path you
-> are on by asking who holds the local end of your SSH connection
-> (`ss -tnpH "sport = :<client port>"`): with `--tun=userspace-networking` tailscaled also
-> re-dials 127.0.0.1:22, so a loopback client address proves nothing on its own — only the
-> carrier process (`cloudflared` vs `tailscaled`) does. When the carrier cannot be identified
-> they assume you are on the tunnel and say what they saw; `--allow-tunnel-session`
-> (migrate) and `--force` (uninstall, restore) override.
-
-Known behaviour: while your ISP or the edge is unreachable, the healthcheck keeps killing
-and restarting the container about every two minutes until connectivity returns. Stopping
-the tunnel from the GUI is undone the same way — on hosts where the tunnel is the remote
-path, that is the intended bias.
-
-## Upgrade
-
-Change the repo (bump `VERSION`, the pinned `CLOUDFLARED_VERSION`, a unit or a setting),
-commit, then:
+Run it outside Kubernetes (the workspace list then says it is not in a
+workspace):
 
 ```bash
-scripts/upgrade.sh
+docker build -t cf-tunnel-webgui:dev .
+docker run --rm -p 18000:8000 -e UVICORN_HOST=0.0.0.0 cf-tunnel-webgui:dev
 ```
-
-It builds the new image while the old container keeps serving, snapshots the installed units
-as the rollback target, backs up the data volume, records a baseline (edge connections,
-ingress config version, hostname map, every public hostname's HTTP code), then hands the
-restart to a detached `systemd-run --user` watchdog: install, restart, **gate within 180s**,
-**soak 600s**, commit. Any failure, timeout or signal before the commit reinstalls the
-previous units and restarts them. `scripts/upgrade.sh status|commit|abort|--rollback`
-follow, end the soak early, or undo it.
-
-## Backup and restore
-
-```bash
-scripts/backup.sh                      # ~/backups/woow-cf-tunnel/<volume>-<ts>.tar (+ .sha256)
-scripts/restore.sh <tarball> [--replace]
-```
-
-> The tarball contains `/data`, **including the tunnel token**. It is written mode 0600 in a
-> 0700 directory. Keep it on the host, delete old copies, and never copy it anywhere
-> unencrypted: anyone who holds it can run your tunnel.
-
-## Uninstall
-
-```bash
-scripts/uninstall.sh            # stops and removes the units; keeps the volume and images
-scripts/uninstall.sh --purge    # also deletes the volume, after a final backup
-```
-
-## Migrating an existing deployment
-
-**From a hand-written systemd unit or `podman run`** (for example a `cf-tunnel-webgui.service`
-running `podman run ... -v cf_data:/data`):
-
-```bash
-# run this over a path that does NOT go through the tunnel (for example a tailnet)
-scripts/migrate-legacy.sh preflight     # build + stage, checks, backup, baseline -> prints RUN
-scripts/migrate-legacy.sh swap          # detached watchdog; returns immediately
-scripts/migrate-legacy.sh status        # phase and result
-scripts/migrate-legacy.sh commit        # optional: end the 10-minute soak early
-scripts/migrate-legacy.sh --rollback    # manual rollback, until you clean up
-```
-
-The data volume is adopted in place (`VolumeName=`), so the token and settings survive. The
-legacy unit is stopped and disabled but **its file is kept**, and the watchdog re-enables it
-automatically if the new unit does not reach the baseline. Outage: roughly 35-50 seconds.
-Knobs for other layouts: `LEGACY_UNIT`, `LEGACY_GUI_PORT`, `EXTRA_UNITS`, `HTTP_OVERRIDES`,
-`RESCUE_CONTAINER`, `EXPECT_CONNS`.
-
-### What happens to the legacy container
-
-The new Quadlet container has a different name (`woow-cf-tunnel`), so the swap does not rename
-the legacy one — it just stops it and disables its unit. That keeps a rollback available only
-while nothing starts the container again. The user unit `podman-restart.service` runs
-`podman start --all --filter restart-policy=always` at boot, so on a host where that unit is
-**enabled** and the legacy container's restart policy is exactly `always`, the next reboot
-brings a second `cloudflared` up on the same tunnel token, the same `/data` volume and the same
-host ports (the legacy container is `--network=host`). podman 4.9.3 cannot repair that
-afterwards: `podman update` only rewrites cgroup limits, and a restart policy is fixed at
-create time.
-
-`preflight` therefore asks `ql_rollback_strategy`, which reads this host's real state — never
-its name — and prints the answer as `rollback shape:`.
-
-| Answer | When | What the swap does | What a rollback does |
-|---|---|---|---|
-| `rename` | the unit is disabled, or the legacy container's policy is not `always` | leaves the container stopped, as before | starts its unit again |
-| `capture` | the unit is enabled **and** the policy is `always` | `preflight` writes `<backup>/legacy-container/cf-tunnel-webgui/` (inspect, create command, image, policy, mounts) and the swap then removes the container with a plain `podman rm` — never `podman rm -v`, which would delete the anonymous volumes | `ql_recreate_container` recreates it stopped, with its original restart policy, **before** the legacy unit is started |
-
-The capture is taken in `preflight`, before any downtime, so a container the library cannot
-replay (an empty `CreateCommand` — created through the podman API rather than the CLI, which
-is what a docker-compose-over-the-socket container looks like) is refused while the legacy
-tunnel is still serving.
-
-On `woowtechopenclaw` — the host this migration is aimed at — `podman-restart.service` *is*
-enabled, but `cf-tunnel-webgui` is `unless-stopped`, a policy that unit's filter never matches.
-So the shape there is `rename` today and the swap behaves exactly as it always did; the
-`capture` shape exists because a policy can change and this script can be run on another host.
-
-No `--commit`: the GUI keeps its settings, its tunnel token and its credentials in the `/data`
-volume, which a plain `podman rm` never touches, and the live container's writable layer is
-about 777 kB of `__pycache__`. The container id and the IP/MAC lease are not preserved.
-`tests/harness/run-all.sh` covers both shapes (`migrate/openclaw/*`, `migrate/openclaw_always/*`).
-
-**From compose:** stop the compose project, set `CF_DATA_VOLUME` to its volume (usually
-`<project>_cf_data`), then run `scripts/install.sh`.
-
-**Docker users:** this repo is Quadlet-only (decision D1). The last commit that ships
-`docker-compose.yml` is tagged [`compose-final`](../../tree/compose-final)
-(`git checkout compose-final`). Note that file published the GUI on `0.0.0.0:8888` with no
-authentication — read [Security](#security) before you expose it.
-
-### Preflight refusals you may meet on an unfamiliar host
-
-- **"rescue path: … is not demonstrable".** A *running* rescue container is not a second way in, so
-  preflight asks how `:22` would actually be reached through `RESCUE_CONTAINER`. It accepts two
-  answers. Either the node carries an explicit `tailscale serve --tcp 22` rule, **or** it has
-  `ShieldsUp` off while this host has something listening on `:22` — because a tailnet node hands
-  an inbound connection for port N to the host on port N whenever inbound is not shielded. That is
-  true in both networking modes: with a TUN interface the tailnet IP is on the host's own stack,
-  and in userspace mode `tailscaled` dials `localhost:N` itself. `serve` publishes a port under TLS
-  or remaps it; it is not what makes an already-listening host port reachable.
-  (An earlier version of this section claimed the opposite — that an unserved port is unreachable
-  under userspace networking. It is wrong: on woowtechopenclaw both tailnet nodes are userspace-mode
-  with no `:22` rule, and ssh to either node's tailnet IP reaches the host's sshd.)
-  Neither answer can see the tailnet **ACL**, which may deny `:22` regardless, so preflight prints
-  the evidence it used and says so. The only real proof is a login you have made yourself — that is
-  what `RESCUE_PROOF=lan` / `RESCUE_PROOF=console` are for. It refuses when `ShieldsUp` is on, when
-  nothing listens on `:22`, or when the node's prefs cannot be read at all.
-- **"`<unit>` is not a loaded user unit".** Preflight lists the user units whose `Exec*` lines name
-  `LEGACY_CONTAINER` and suggests one; set `LEGACY_UNIT=` to it.
-- **"legacy GUI does not answer on 127.0.0.1:`<port>`".** `LEGACY_GUI_PORT` defaults to the *staged*
-  `UVICORN_PORT`. Preflight reads the legacy container's real `uvicorn --host/--port` and names it.
-- **"the legacy GUI binds `<addr>` but the staged unit hard-codes UVICORN_HOST=127.0.0.1".** The swap
-  would narrow a LAN-reachable GUI to loopback, and the tunnel checks cannot see it (the container is
-  `Network=host`). Set `UVICORN_HOST` in `quadlet/woow-cf-tunnel.container`, or acknowledge the
-  narrowing with `CF_ALLOW_BIND_NARROWING=1`.
-
-Running any script out of a host's pre-Quadlet deployment tree is refused outright
-(`ql_require_own_lineage`). `tests/host-tree.sh` pins all of this.
 
 ## Security
 
-- **The GUI has no login.** Anyone who reaches it can read your ingress configuration,
-  replace the tunnel token, or stop the tunnel. **Never put it on a public hostname or the
-  LAN without authentication in front.** In order of preference:
-  1. an SSH port-forward (the default: the unit binds 127.0.0.1 and `tests/smoke.sh` fails
-     if anything else listens on that port);
-  2. **Cloudflare Access** on a tunnel hostname;
-  3. the optional Basic-auth proxy: `scripts/auth-passwd.sh <user>` then
-     `scripts/install.sh --with-auth` (nginx on `AUTH_LISTEN`, htpasswd validated at install,
-     `$6$`/bcrypt/apr1 hashes, the unit asserts its files exist instead of crash-looping).
-- **The tunnel token is app state, not a repo secret.** It lives in the data volume at
-  `/data/.tunnel_token` (mode 0600) because the GUI's job is to set and replace it. Since
-  1.1.0 cloudflared reads it with `--token-file`, so it is **not** in any process argv:
-  `ps`, `podman top` and `systemctl --user status` no longer expose it. API responses only
-  ever return `********`.
-- **No secrets in the repo or in unit files.** `config/woow-cf-tunnel.env.example` holds
-  settings only; `tests/no-secrets.sh` runs in CI.
-- The container runs rootless with `--cap-drop=all` and `no-new-privileges`. The metrics
-  endpoint must stay on 127.0.0.1: with host networking, `0.0.0.0` would publish the whole
-  ingress map to the LAN (install.sh refuses it).
-- Backups contain the token (see above).
-
-## Repository layout
-
-```
-quadlet/          woow-cf-tunnel.container, woow-cf-tunnel-data.volume, render-vars
-quadlet/optional/ woow-cf-tunnel-auth.container (Basic-auth proxy)
-config/           woow-cf-tunnel.env.example, auth/auth-nginx.conf
-scripts/          install, upgrade, uninstall, backup, restore, migrate-legacy,
-                  auth-passwd, healthcheck.py, render-args.sh, lib/
-backend/          FastAPI app: routers/{config,tunnel,logs,health,setup},
-                  services/{process_manager,cloudflared_cli,token_store,config_builder,
-                  config_manager,instances,validator}
-frontend/         Vue 3 + Vite SPA
-tests/            dryrun.sh (+ dryrun.local.sh), smoke.sh, harness/, pytest suite
-```
-
-`scripts/lib/quadlet-lib.sh` is the shared WOOWTECH Quadlet library, vendored unmodified and
-checksummed in CI (decision D8). Do not edit it here. `scripts/lib/quadlet-lib.versions` is the
-canonical ledger of released `(version, sha256)` pairs, and `tests/lib-version.sh` checks the
-vendored lib against it: the manifest alone only proves the file was not edited after it was
-copied here, never which version it actually is.
-
-## Testing
-
-```bash
-tests/dryrun.sh            # render + podman 4.9.3 generator + systemd-analyze + invariants
-tests/harness/run-all.sh   # install/migrate/upgrade/uninstall against mocked podman+systemd
-python -m pytest -m "not e2e" -q
-tests/smoke.sh             # against a real install
-```
-
-No test creates a container except the CI end-to-end job, which also proves the liveness
-chain (bogus token → unhealthy → `HealthOnFailure=kill` → `Restart=always`).
-
-## API reference
-
-| Endpoint | Returns |
-|---|---|
-| `GET /api/health` | `version`, `process_running`, `stopped_by_operator`, `tunnel` (`status`: running / starting / stopped, `ready_connections` from cloudflared `/ready`), `credentials_error` |
-| `GET /api/config` | `TunnelConfigRead`: `mode`, `tunnel_name`, `routes[]`, `catch_all_service`, `post_quantum`, `log_level`, `run_parameters[]`, `no_tls_verify`, `tunnel_token_masked`, `tunnel_token_set`, `tunnel_token_managed_by_paas` |
-| `PUT /api/config[?restart=true]` | same shape. `tunnel_token` is write-only: omitted or `null` keeps it, `""` removes it, and a value (or a pasted `cloudflared service install …` command) replaces it, in `/data/.tunnel_token`. With `restart=true` the settings are also applied |
-| `POST /api/tunnel/{start,stop,restart}`, `GET /api/tunnel/status` | connector control; start and restart build the argv from the current settings |
-| `GET /api/setup/state`, `POST /api/setup/*`, `WS /api/setup/login` | the local-managed wizard (refused in token mode) |
-| `GET /api/paas/bootstrap`, `/authorization[/status,/revoke]`, `/workspaces[/{id}/accesses]`, `/accesses/{id}/review`, `/accesses/{id}/connect`, `/connection/status[?probe=true]`, `/disconnect[/finish]` | the WOOW PaaS link (same contract as the HA add-on) |
-| `GET /api/logs`, `WS /ws/logs` | cloudflared output (credentials redacted): snapshot and live |
-
-Mutating calls need the CSRF double-submit cookie (`x-csrftoken`).
-
-## Screenshots
-
-<p align="center">
-  <img src="docs/screenshots/dashboard.png" alt="Dashboard" width="720">
-</p>
-<p align="center">
-  <img src="docs/screenshots/config_basic.png" alt="Config" width="720">
-</p>
-<p align="center">
-  <img src="docs/screenshots/logs.png" alt="Logs" width="720">
-</p>
-
-## Support
-
-- Issues: [GitHub Issues](https://github.com/WOOWTECH/Woow_cloudflare_tunnel_webgui/issues)
-- Changelog: [CHANGELOG.md](CHANGELOG.md)
+- Never expose port 8000: the app has no login of its own. The chart keeps it on
+  loopback behind the auth proxy.
+- State-changing requests need the CSRF header; WebSockets are accepted only
+  from a page of the same origin.
+- The tunnel token, OAuth tokens and `cert.pem` never reach the browser.
+- The Role can only read Services and EndpointSlices of the namespace.
 
 ## License
 
-MIT.
-
----
-
-<p align="center">
-  Built with Vue 3 + FastAPI + Podman Quadlet by <a href="https://github.com/WOOWTECH">WOOWTECH</a>
-</p>
+MIT

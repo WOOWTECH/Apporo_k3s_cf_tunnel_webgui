@@ -1,6 +1,7 @@
 import os
 import re
 import logging
+from urllib.parse import urlparse
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -13,7 +14,7 @@ from starlette_csrf import CSRFMiddleware
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from . import __version__
-from .routers import config, tunnel, logs, health, setup, paas
+from .routers import config, tunnel, logs, health, setup, paas, workspace
 from .services import runtime
 from .services.process_manager import autostart_args, effective_metrics_addr
 
@@ -87,7 +88,19 @@ async def validation_error(request: Request, exc: RequestValidationError):
 
 # ── CSRF Protection (Double Submit Cookie) ───────────────
 # Wrap CSRFMiddleware to skip WebSocket connections (starlette-csrf
-# only handles HTTP scope and crashes on WebSocket scope).
+# only handles HTTP scope and crashes on WebSocket scope). WebSockets get a
+# same-origin check instead: behind the PaaS auth proxy the browser attaches
+# its basic-auth credentials to any page's WebSocket to this host, so a
+# foreign page must not be able to open the log stream or the login flow.
+def _same_origin(scope: Scope) -> bool:
+    headers = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope.get("headers", [])}
+    origin = headers.get("origin")
+    if not origin:
+        return True  # not a browser (curl, tests); the proxy still requires auth
+    host = headers.get("x-forwarded-host") or headers.get("host") or ""
+    return urlparse(origin).netloc.lower() == host.split(",")[0].strip().lower()
+
+
 class WebSocketSafeCSRFMiddleware:
     """Wraps CSRFMiddleware, bypassing it for WebSocket connections."""
 
@@ -97,6 +110,10 @@ class WebSocketSafeCSRFMiddleware:
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send):
         if scope["type"] == "websocket":
+            if not _same_origin(scope):
+                logger.warning("Refused a cross-origin WebSocket to %s", scope.get("path"))
+                await send({"type": "websocket.close", "code": 4403})
+                return
             await self._app(scope, receive, send)
         else:
             await self._csrf(scope, receive, send)
@@ -125,6 +142,7 @@ app.add_middleware(
     exempt_urls=[
         re.compile(r"^/api/docs"),
         re.compile(r"^/api/health"),
+        re.compile(r"^/api/ready$"),
         re.compile(r"^/openapi\.json"),
     ],
 )
@@ -150,6 +168,7 @@ app.include_router(logs.router)
 app.include_router(health.router)
 app.include_router(setup.router)
 app.include_router(paas.router)
+app.include_router(workspace.router)
 
 # ── Static Files + SPA Fallback ─────────────────────────
 STATIC_DIR = Path("/app/static")

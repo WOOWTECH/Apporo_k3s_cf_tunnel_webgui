@@ -24,3 +24,12 @@ async def health_check():
         tunnel=await metrics.tunnel_status(),
         credentials_error=runtime.credentials_error,
     )
+
+
+@router.get("/api/ready")
+async def ready() -> dict:
+    """Kubernetes probe target. Only says the backend answers: the auth proxy
+    exposes it without a login, so it carries no tunnel or version details,
+    and the tunnel state must not decide whether the pod is ready (an
+    unconfigured WebGUI is a healthy WebGUI)."""
+    return {"ok": True}

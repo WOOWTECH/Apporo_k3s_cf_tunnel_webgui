@@ -1,0 +1,115 @@
+# Tests, chart checks and a test build of the image on every push and PR.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-dev.txt
+      - name: pytest
+        run: python -m pytest -m "not e2e" -q
+
+  frontend:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: npm test
+      - name: type-check and build
+        run: npm run build
+
+  chart:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.4
+      - run: helm lint --strict charts/cf-tunnel-webgui
+      - name: render with the values the PaaS platform passes
+        run: |
+          helm template svc-1a2b3c4d charts/cf-tunnel-webgui --namespace paas-ws-0a1b2c3d \
+            --set config.sensitive.admin_password=ci-password-not-secret \
+            --set 'imagePullSecrets[0].name=paas-registry' \
+            --set 'networkPolicy.apiServerCidrs={10.43.0.1/32,192.0.2.10/32}' \
+            --set persistence.storageClass=local-path > rendered.yaml
+          # every NetworkPolicy egress rule has a `to` (the operator's admission policy)
+          python3 - <<'PY'
+          import yaml
+          docs = [d for d in yaml.safe_load_all(open("rendered.yaml")) if d]
+          kinds = sorted(d["kind"] for d in docs)
+          print(kinds)
+          for d in docs:
+              if d["kind"] == "NetworkPolicy":
+                  for rule in d["spec"].get("egress", []):
+                      assert rule.get("to"), "egress rule without to"
+              if d["kind"] == "Service":
+                  assert d["metadata"]["labels"]["app.kubernetes.io/instance"] == "svc-1a2b3c4d"
+                  assert [p["port"] for p in d["spec"]["ports"]] == [8080]
+          PY
+
+  checks:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: no secrets in the repo
+        run: tests/no-secrets.sh
+      - name: cloudflared version policy
+        run: |
+          v=$(sed -n 's/^ARG CLOUDFLARED_VERSION=//p' Dockerfile)
+          echo "pinned cloudflared: $v"
+          case "$v" in
+            2026.8.0 | 2026.8.1)
+              echo "::error::cloudflared $v is marked 'Do not use' by Cloudflare"; exit 1 ;;
+          esac
+          grep -q '^ARG CLOUDFLARED_SHA256_AMD64=[0-9a-f]\{64\}$' Dockerfile
+          grep -q '^ARG CLOUDFLARED_SHA256_ARM64=[0-9a-f]\{64\}$' Dockerfile
+      - name: versions agree
+        run: |
+          v=$(cat VERSION)
+          grep -q "^__version__ = \"$v\"" backend/__init__.py
+          grep -q "^appVersion: \"$v\"" charts/cf-tunnel-webgui/Chart.yaml
+
+  image:
+    runs-on: ubuntu-24.04
+    needs: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: build (amd64, not pushed)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: cf-tunnel-webgui:ci
+      - name: smoke-run the image
+        run: |
+          docker run -d --name cftw -e UVICORN_HOST=0.0.0.0 -p 18000:8000 cf-tunnel-webgui:ci
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:18000/api/ready && break; sleep 1; done
+          curl -sf http://127.0.0.1:18000/api/health
+          docker exec cftw cloudflared --version
+          test "$(docker exec cftw id -u)" = 1000
+          curl -s http://127.0.0.1:18000/api/workspace | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["available"] is False, d; print(d["reason"])'
+          docker logs cftw | tail -20

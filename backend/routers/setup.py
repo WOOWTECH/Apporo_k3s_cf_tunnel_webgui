@@ -1,5 +1,6 @@
 """Setup wizard endpoints: state / create tunnel / apply config / login (WS)."""
 import json
+import os
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, WebSocket
@@ -94,7 +95,9 @@ async def login_ws(ws: WebSocket):
         await ws.send_json({"type": "error", "message": _TOKEN_MODE_MSG})
         await ws.close()
         return
-    src = "/root/.cloudflared/cert.pem"
+    # cloudflared writes the login cert to ~/.cloudflared/cert.pem of the user
+    # it runs as (a non-root user in the PaaS image), then it moves to /data.
+    src = os.environ.get("CLOUDFLARED_LOGIN_CERT") or os.path.expanduser("~/.cloudflared/cert.pem")
     dest = str(DATA_DIR / "cert.pem")
     try:
         async for url in cli.login(src_cert=src, dest_cert=dest):

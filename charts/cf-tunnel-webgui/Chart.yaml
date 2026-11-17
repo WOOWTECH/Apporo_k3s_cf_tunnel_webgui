@@ -1,0 +1,16 @@
+apiVersion: v2
+name: cf-tunnel-webgui
+description: |
+  Cloudflare Tunnel WebGUI, PaaS edition: the WOOW Cloudflare Tunnel web GUI and
+  the cloudflared connector it supervises, as one pod in a WOOW PaaS workspace.
+  It publishes the other services of the same workspace through a Cloudflare
+  tunnel: PaaS link (Security Access), tunnel token, or the user's own
+  Cloudflare login. The GUI is reached through an in-pod nginx basic-auth proxy
+  on port 8080; the app itself listens on loopback only.
+type: application
+version: 0.1.0
+appVersion: "1.3.0"
+home: https://github.com/WOOWTECH/Woow_k3s_cf_tunnel_webgui
+sources:
+  - https://github.com/WOOWTECH/Woow_k3s_cf_tunnel_webgui
+keywords: [cloudflare, cloudflared, tunnel, paas]
