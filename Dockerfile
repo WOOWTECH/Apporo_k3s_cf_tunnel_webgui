@@ -1,6 +1,6 @@
-# Cloudflare Tunnel WebGUI, PaaS edition: FastAPI + Vue, with cloudflared as a
-# supervised child process. Built by .github/workflows/release.yml and pushed to
-# ghcr.io/woowtech/cf-tunnel-webgui; deployed by charts/cf-tunnel-webgui.
+# Apporo CF Tunnel Web, Kubernetes (k3s) edition: FastAPI + Vue, with cloudflared as
+# a supervised child process. Built by .github/workflows/release.yml and pushed to
+# ghcr.io/woowtech/apporo-cf-tunnel-webgui; deployed by charts/apporo-cf-tunnel-webgui.
 
 # ── Stage 1: Build the Vue frontend ──────────────────────
 FROM --platform=$BUILDPLATFORM node:22-alpine AS frontend-build
@@ -67,9 +67,9 @@ USER 1000:1000
 EXPOSE 8000
 VOLUME ["/data"]
 
-LABEL org.opencontainers.image.source="https://github.com/WOOWTECH/Woow_k3s_cf_tunnel_webgui" \
-      org.opencontainers.image.title="cf-tunnel-webgui" \
-      org.opencontainers.image.description="Cloudflare Tunnel WebGUI (WOOW PaaS edition) with a supervised cloudflared connector" \
+LABEL org.opencontainers.image.source="https://github.com/WOOWTECH/Apporo_k3s_cf_tunnel_webgui" \
+      org.opencontainers.image.title="apporo-cf-tunnel-webgui" \
+      org.opencontainers.image.description="Apporo CF Tunnel Web (k3s edition) with a supervised cloudflared connector" \
       org.opencontainers.image.licenses="MIT"
 
 ENTRYPOINT ["tini", "--"]

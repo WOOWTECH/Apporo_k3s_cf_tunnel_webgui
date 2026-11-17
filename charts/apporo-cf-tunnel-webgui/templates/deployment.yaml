@@ -121,7 +121,7 @@ spec:
             - name: PAAS_ROUTE_DOMAIN
               value: {{ .Values.paas.routeDomain | quote }}
             - name: PAAS_INSTANCE_LABEL
-              value: {{ .Values.paas.instanceLabel | default (printf "Woow Cloudflared (PaaS · %s)" .Release.Name) | quote }}
+              value: {{ .Values.paas.instanceLabel | default (printf "Apporo CF Tunnel Web (k3s · %s)" .Release.Name) | quote }}
             {{- with .Values.app.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

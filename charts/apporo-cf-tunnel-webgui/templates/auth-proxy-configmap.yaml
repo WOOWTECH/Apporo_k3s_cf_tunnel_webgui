@@ -38,7 +38,7 @@ data:
       listen {{ .Values.authProxy.port }};
       server_name _;
       client_max_body_size {{ .Values.authProxy.clientMaxBodySize }};
-      auth_basic           "Cloudflare Tunnel WebGUI";
+      auth_basic           "Apporo CF Tunnel Web";
       auth_basic_user_file /auth/.htpasswd;
       location = /healthz { auth_basic off; access_log off; return 200 "ok\n"; }
       location = /healthz-upstream {

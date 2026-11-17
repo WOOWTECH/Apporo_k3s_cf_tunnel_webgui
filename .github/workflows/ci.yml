@@ -45,10 +45,10 @@ jobs:
       - uses: azure/setup-helm@v4
         with:
           version: v3.16.4
-      - run: helm lint --strict charts/cf-tunnel-webgui
+      - run: helm lint --strict charts/apporo-cf-tunnel-webgui
       - name: render with the values the PaaS platform passes
         run: |
-          helm template svc-1a2b3c4d charts/cf-tunnel-webgui --namespace paas-ws-0a1b2c3d \
+          helm template svc-1a2b3c4d charts/apporo-cf-tunnel-webgui --namespace paas-ws-0a1b2c3d \
             --set config.sensitive.admin_password=ci-password-not-secret \
             --set 'imagePullSecrets[0].name=paas-registry' \
             --set 'networkPolicy.apiServerCidrs={10.43.0.1/32,192.0.2.10/32}' \
@@ -88,7 +88,7 @@ jobs:
         run: |
           v=$(cat VERSION)
           grep -q "^__version__ = \"$v\"" backend/__init__.py
-          grep -q "^appVersion: \"$v\"" charts/cf-tunnel-webgui/Chart.yaml
+          grep -q "^appVersion: \"$v\"" charts/apporo-cf-tunnel-webgui/Chart.yaml
 
   image:
     runs-on: ubuntu-24.04
@@ -103,10 +103,10 @@ jobs:
           platforms: linux/amd64
           push: false
           load: true
-          tags: cf-tunnel-webgui:ci
+          tags: apporo-cf-tunnel-webgui:ci
       - name: smoke-run the image
         run: |
-          docker run -d --name cftw -e UVICORN_HOST=0.0.0.0 -p 18000:8000 cf-tunnel-webgui:ci
+          docker run -d --name cftw -e UVICORN_HOST=0.0.0.0 -p 18000:8000 apporo-cf-tunnel-webgui:ci
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:18000/api/ready && break; sleep 1; done
           curl -sf http://127.0.0.1:18000/api/health
           docker exec cftw cloudflared --version

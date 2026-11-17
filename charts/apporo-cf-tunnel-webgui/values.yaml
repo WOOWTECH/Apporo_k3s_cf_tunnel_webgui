@@ -1,8 +1,8 @@
-# Cloudflare Tunnel WebGUI, PaaS edition. Deployed per workspace by the WOOW
-# PaaS operator as release svc-<ref8> into a paas-ws-* namespace.
+# Apporo CF Tunnel Web, Kubernetes (k3s) edition. Install it into the namespace
+# whose services it should publish (helm install, or a PaaS template).
 
 image:
-  repository: ghcr.io/woowtech/cf-tunnel-webgui
+  repository: ghcr.io/woowtech/apporo-cf-tunnel-webgui
   tag: ""             # "" → .Chart.AppVersion; the platform pins tag@sha256
   pullPolicy: IfNotPresent
 # The operator sets this to the namespace's registry secret (paas-registry).
@@ -18,15 +18,15 @@ app:
   metricsAddr: "127.0.0.1:20241"
   extraEnv: []
 
-# The platform that the "PaaS 連結" page links to (OAuth device flow) and, when
+# The platform that the "Apporo Link" page links to (OAuth device flow) and, when
 # routesWrite is on, where the WebGUI adds Security Access routes.
 paas:
-  apiBase: "https://aiot.woowtech.io"
+  apiBase: "https://www.apporo.ai"
   portalBase: ""            # "" → apiBase
   clientId: "woow-ha-smart-home"
-  routesWrite: false        # needs the platform's security-access:routes scope
-  routeDomain: "woowtech.io"
-  instanceLabel: ""         # "" → "Woow Cloudflared (PaaS · <release>)"
+  routesWrite: false        # the Apporo platform does not offer security-access:routes yet
+  routeDomain: "apporo.ai"
+  instanceLabel: ""         # "" → "Apporo CF Tunnel Web (k3s · <release>)"
 
 # Top-level resources apply to the app container (the platform writes plan
 # sizes here when the plan has them).
@@ -57,7 +57,7 @@ authProxy:
 # ── Tenant credential (platform has_admin_gui / helm_secret carrier) ──────────
 config:
   sensitive:
-    # The GUI's basic-auth password. "" → generated once and kept across
+    # The GUI's basic-auth password (user admin). "" → generated once and kept across
     # upgrades (lookup). The platform pins it here; reset = upgrade + restart.
     admin_password: ""
 auth:
@@ -75,7 +75,7 @@ persistence:
   storageClass: ""
   existingClaim: ""
 
-# Listing this workspace's Services (the "工作區服務" picker).
+# Listing this namespace's Services (the workspace services picker).
 rbac:
   create: true
 serviceAccount:
@@ -116,7 +116,7 @@ livenessProbe:
   failureThreshold: 5
 
 terminationGracePeriodSeconds: 40
-timezone: Asia/Taipei
+timezone: America/Los_Angeles
 nodeSelector: {}
 affinity: {}
 tolerations: []

@@ -14,7 +14,7 @@ permissions:
   packages: write
 
 env:
-  IMAGE: ghcr.io/woowtech/cf-tunnel-webgui
+  IMAGE: ghcr.io/woowtech/apporo-cf-tunnel-webgui
 
 jobs:
   image:

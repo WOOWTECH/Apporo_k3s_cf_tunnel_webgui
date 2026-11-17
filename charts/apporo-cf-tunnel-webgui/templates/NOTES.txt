@@ -1,0 +1,8 @@
+Apporo CF Tunnel Web {{ .Chart.AppVersion }} is running as {{ include "cftw.fullname" . }}.
+
+Open it through the service's URL (or `kubectl port-forward svc/{{ include "cftw.fullname" . }} 8080`)
+and log in as "{{ .Values.authProxy.basicAuthUsername }}" with the admin password
+(Secret {{ include "cftw.secretName" . }}, key admin_password). From there:
+  - Apporo Link: link an Apporo Security Access ({{ .Values.paas.apiBase }})
+  - Config:      paste a tunnel token
+  - Setup:       log in to your own Cloudflare account and publish this namespace's services

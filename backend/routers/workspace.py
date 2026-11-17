@@ -19,7 +19,7 @@ async def get_workspace() -> dict:
         "services": [],
     }
     if not ns:
-        body["reason"] = "不在 PaaS 工作區內執行，無法列出工作區服務"
+        body["reason"] = "Not running in a Kubernetes namespace, so the workspace services cannot be listed."
         return body
     try:
         services = await workspace.kube_get(f"/api/v1/namespaces/{ns}/services")

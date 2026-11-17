@@ -27,10 +27,10 @@ def http():
 def _get_csrf(http: httpx.Client) -> dict:
     """取得 CSRF cookie 並回傳對應 header。"""
     resp = http.get("/api/config")
-    csrf_token = resp.cookies.get("csrftoken", "")
+    csrf_token = resp.cookies.get("apporo_csrftoken", "")
     if not csrf_token:
         for cookie in http.cookies.jar:
-            if cookie.name == "csrftoken":
+            if cookie.name == "apporo_csrftoken":
                 csrf_token = cookie.value
                 break
     return {"x-csrftoken": csrf_token}

@@ -1,4 +1,4 @@
-{{/* cf-tunnel-webgui helpers. Deployed per workspace by paas-operator as svc-{ref[:8]}. */}}
+{{/* apporo-cf-tunnel-webgui helpers. */}}
 {{- define "cftw.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
@@ -24,8 +24,8 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- define "cftw.labels" -}}
 helm.sh/chart: {{ include "cftw.chart" . }}
 {{ include "cftw.selectorLabels" . }}
-app.kubernetes.io/component: cf-tunnel-webgui
-app.kubernetes.io/part-of: cf-tunnel-webgui
+app.kubernetes.io/component: apporo-cf-tunnel-webgui
+app.kubernetes.io/part-of: apporo-cf-tunnel-webgui
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- if .Chart.AppVersion }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}

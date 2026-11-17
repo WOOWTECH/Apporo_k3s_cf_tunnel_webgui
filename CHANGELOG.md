@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.0.0 — Apporo CF Tunnel Web, Kubernetes (k3s) edition
+
+First release of the Apporo-branded Kubernetes edition, built from the WOOW Kubernetes
+edition 1.3.1 (WOOWTECH/Woow_k3s_cf_tunnel_webgui) with the branding and English
+interface of the Apporo Podman edition (WOOWTECH/apporo_cf_tunnel_web 1.0.0).
+
+- Apporo Link connects to www.apporo.ai (OAuth client `woow-ha-smart-home`, the platform's
+  contract); the device is labelled "Apporo CF Tunnel Web (k3s · <release>)".
+- Route hostnames are `<prefix>.apporo.ai`. The Apporo platform does not offer the
+  `security-access:routes` scope, so routes are added in the Apporo portal and the
+  WebGUI lists the namespace's service addresses; the Setup (own Cloudflare) path
+  publishes several services in one go.
+- English interface and messages, Apporo gold theme, CSRF cookie `apporo_csrftoken`.
+- Chart `apporo-cf-tunnel-webgui` 1.0.0, image `ghcr.io/woowtech/apporo-cf-tunnel-webgui`.
+
+The history below is that of the WOOW editions it derives from.
+
 ## 1.3.1 — first lab run fixes
 
 - PaaS 連結: while a linked page reads its Security Accesses it says so, instead of

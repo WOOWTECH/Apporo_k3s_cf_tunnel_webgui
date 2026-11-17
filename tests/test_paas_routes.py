@@ -14,7 +14,7 @@ from backend.routers import paas as paas_router
 
 
 ACCESS = {
-    "id": 25, "workspace_id": 4, "name": "my-workspace 對外", "state": "active",
+    "id": 25, "workspace_id": 4, "name": "my-workspace public", "state": "active",
     "tunnel_id": "tunnel-25", "binding_state": "unbound", "binding_conflict": False,
     "connector_count": 0, "subscription": {"state": "in_progress", "plan_name": "10 routes",
                                            "ac_max_access_seats": 0, "ac_used_access_seats": 0},
@@ -208,7 +208,7 @@ async def test_bulk_create_maps_platform_conflicts(client, platform, tmp_config_
     assert response.status_code == 409
     detail = response.json()["detail"]
     assert detail["errors"] == {"pi-1": "already used by another route"}
-    assert "無法使用" in detail["message"]
+    assert "cannot be used" in detail["message"]
 
 
 @pytest.mark.asyncio
@@ -280,9 +280,9 @@ def test_cross_origin_websocket_is_refused():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("payload,expected", [
-    ({"error": "insufficient_role", "detail": "x"}, "擁有者或管理員"),
-    ({"error": "Forbidden", "detail": "Insufficient scope. Required: security-access:routes"}, "重新授權"),
-    ({"error": "Forbidden", "detail": "No access to the workspace"}, "不是這個工作區的成員"),
+    ({"error": "insufficient_role", "detail": "x"}, "owner or admin"),
+    ({"error": "Forbidden", "detail": "Insufficient scope. Required: security-access:routes"}, "authorize again"),
+    ({"error": "Forbidden", "detail": "No access to the workspace"}, "not a member of this workspace"),
 ])
 async def test_forbidden_reasons_are_told_apart(client, platform, tmp_config_dir, payload, expected):
     _authorized(tmp_config_dir)

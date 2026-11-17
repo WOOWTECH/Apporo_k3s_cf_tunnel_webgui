@@ -1,6 +1,6 @@
-"""Anonymous HTTPS checks for published PaaS hostnames.
+"""Anonymous HTTPS checks for the hostnames the Apporo platform publishes.
 
-Only PaaS-returned hostnames enter this module. DNS answers are validated and
+Only platform-returned hostnames enter this module. DNS answers are validated and
 pinned for the actual connection; redirects are never followed. The result is
 an observation, not proof that a particular person can sign in.
 """
@@ -88,7 +88,7 @@ async def probe(hostname: str) -> dict:
         await resolver.resolve(hostname, 443)
         connector = aiohttp.TCPConnector(resolver=resolver, use_dns_cache=False)
         async with aiohttp.ClientSession(connector=connector, trust_env=False, timeout=aiohttp.ClientTimeout(total=8),
-                                         headers={"User-Agent": "WoowCloudflareTunnelWebGUI-probe"}) as session:
+                                         headers={"User-Agent": "ApporoCFTunnelWeb-probe"}) as session:
             async with session.get(f"https://{hostname}/", allow_redirects=False) as response:
                 status = classify_response(
                     response.status, response.headers.get("Location", ""),

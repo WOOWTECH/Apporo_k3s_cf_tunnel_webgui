@@ -1,4 +1,8 @@
-# PaaS edition: API contract
+# Kubernetes edition: API contract
+
+> Apporo: www.apporo.ai does not offer the platform endpoints of §2 (nor the
+> `security-access:routes` scope) yet, so `routes_write` is false and the bulk
+> create/delete endpoints of §1 answer 501. Everything else applies.
 
 This file is the contract between the three parts of the PaaS edition:
 

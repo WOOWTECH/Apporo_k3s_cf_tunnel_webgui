@@ -63,27 +63,27 @@ async def kube_get(path: str, timeout: float = 8) -> dict:
     """GET a Kubernetes API path with this pod's service account."""
     origin = _api_origin()
     if not origin:
-        raise KubeError("不在 Kubernetes 內執行，無法列出工作區服務")
+        raise KubeError("Not running inside Kubernetes, so the workspace services cannot be listed.")
     try:
         # Projected service-account tokens rotate: read the file on every call.
         token = (SA_DIR / "token").read_text().strip()
         ctx = ssl.create_default_context(cafile=str(SA_DIR / "ca.crt"))
     except (OSError, ssl.SSLError) as exc:
-        raise KubeError("這個 WebGUI 沒有掛載 Kubernetes 服務帳號，無法列出工作區服務") from exc
+        raise KubeError("This WebGUI has no Kubernetes service account mounted, so it cannot list the workspace services.") from exc
     try:
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout)) as session:
             async with session.get(f"{origin}{path}", ssl=ctx,
                                    headers={"Authorization": f"Bearer {token}"}) as response:
                 if response.status in (401, 403):
-                    raise KubeError("WebGUI 沒有讀取工作區服務的權限（請確認 chart 的 rbac.create）")
+                    raise KubeError("This WebGUI is not allowed to list the workspace services (check rbac.create in the chart).")
                 if response.status >= 400:
-                    raise KubeError(f"Kubernetes API 回應 {response.status}")
+                    raise KubeError(f"The Kubernetes API answered {response.status}.")
                 data = await response.json(content_type=None)
                 if not isinstance(data, dict):
-                    raise KubeError("Kubernetes API 回應格式不正確")
+                    raise KubeError("The Kubernetes API answer was not valid.")
                 return data
     except (aiohttp.ClientError, TimeoutError) as exc:
-        raise KubeError("連不上 Kubernetes API（請確認 NetworkPolicy 放行 apiserver）") from exc
+        raise KubeError("Cannot reach the Kubernetes API (check that a NetworkPolicy allows the API server).") from exc
 
 
 def _kind(port: dict) -> str:

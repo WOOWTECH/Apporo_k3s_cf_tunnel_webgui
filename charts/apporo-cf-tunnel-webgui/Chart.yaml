@@ -1,0 +1,16 @@
+apiVersion: v2
+name: apporo-cf-tunnel-webgui
+description: |
+  Apporo CF Tunnel Web, Kubernetes (k3s) edition: the Apporo Cloudflare Tunnel web
+  GUI and the cloudflared connector it supervises, as one pod. It publishes the
+  other services of its namespace through a Cloudflare tunnel: an Apporo Security
+  Access (www.apporo.ai), a tunnel token, or the user's own Cloudflare login. The
+  GUI is reached through an in-pod nginx basic-auth proxy on port 8080; the app
+  itself listens on loopback only.
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+home: https://github.com/WOOWTECH/Apporo_k3s_cf_tunnel_webgui
+sources:
+  - https://github.com/WOOWTECH/Apporo_k3s_cf_tunnel_webgui
+keywords: [apporo, cloudflare, cloudflared, tunnel, k3s]

@@ -1,5 +1,5 @@
 {{- if .Values.rbac.create }}
-# Read-only view of this namespace's Services, for the "工作區服務" picker.
+# Read-only view of this namespace's Services, for the workspace services picker.
 # Namespaced only; no Secrets, no Pods, no writes.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role

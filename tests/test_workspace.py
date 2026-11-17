@@ -148,9 +148,9 @@ async def test_router_surfaces_kube_errors(client, monkeypatch):
     monkeypatch.setenv("WORKSPACE_NAMESPACE", "paas-ws-0a1b2c3d")
 
     async def denied(path, timeout=8):
-        raise workspace.KubeError("WebGUI 沒有讀取工作區服務的權限（請確認 chart 的 rbac.create）")
+        raise workspace.KubeError("This WebGUI is not allowed to list the workspace services (check rbac.create in the chart).")
 
     with patch.object(workspace, "kube_get", denied):
         body = (await client.get("/api/workspace")).json()
     assert body["available"] is False
-    assert "權限" in body["reason"]
+    assert "not allowed" in body["reason"]
