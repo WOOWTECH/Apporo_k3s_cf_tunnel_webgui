@@ -676,7 +676,11 @@ def _require_routes_write() -> None:
 
 
 def _route_error_message(payload: dict) -> str:
-    return _ROUTE_ERRORS.get(payload.get("error") or "") or payload.get("detail") or "PaaS 拒絕了這次新增"
+    message = _ROUTE_ERRORS.get(payload.get("error") or "")
+    detail = str(payload.get("detail") or "").strip()
+    if message and detail and payload.get("error") == "not_writable":
+        return f"{message}：{detail}"  # the platform's own reason (expired, suspended …)
+    return message or detail or "PaaS 拒絕了這次新增"
 
 
 def _forbidden_message(payload: dict, action: str) -> str:

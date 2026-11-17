@@ -292,3 +292,13 @@ async def test_forbidden_reasons_are_told_apart(client, platform, tmp_config_dir
     assert response.status_code == 403
     assert expected in response.json()["detail"]
 
+
+@pytest.mark.asyncio
+async def test_not_writable_carries_the_platform_reason(client, platform, tmp_config_dir):
+    _authorized(tmp_config_dir)
+    platform.post_status = 409
+    platform.post_payload = {"error": "not_writable", "detail": "Your subscription has expired."}
+    response = await client.post("/api/paas/accesses/25/routes", json=BULK)
+    assert response.status_code == 409
+    assert response.json()["detail"]["message"].endswith("Your subscription has expired.")
+

@@ -144,6 +144,33 @@ describe('PaasLink (PaaS edition)', () => {
     expect(wrapper.get('[data-test="other-workspace-note"]').text()).toContain('只能透過「my-workspace」的安全存取服務')
   })
 
+  it('shows a loading hint, not "no Security Access", while a linked page reads its services', async () => {
+    let releaseAccesses: () => void = () => {}
+    const accessesGate = new Promise<void>((resolve) => { releaseAccesses = resolve })
+    const inner = backend({
+      bootstrap: { connection: { access_id: 9, workspace_id: 4, name: 'my-access' } },
+      connectionStatus: { connected: true, routes: [], issues: [], public_routes: [], external: [] },
+    })
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/paas/workspaces/4/accesses') await accessesGate
+      return inner(url, init)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const wrapper: Page = mount(PaasLink, { global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } } })
+    await flushPromises()
+    expect(wrapper.find('[data-test="accesses-loading"]').exists()).toBe(true)
+    expect(wrapper.text()).not.toContain('這個工作區還沒有安全存取服務')
+    // The workspace list, the services and the accesses are read side by side.
+    expect(call(fetchMock, 'GET', '/api/paas/workspaces')).toBeTruthy()
+    expect(call(fetchMock, 'GET', '/api/workspace')).toBeTruthy()
+
+    releaseAccesses()
+    await flushPromises()
+    expect(wrapper.find('[data-test="accesses-loading"]').exists()).toBe(false)
+    expect((wrapper.get('[data-test="access-select"]').element as HTMLSelectElement).value).toBe('9')
+    expect(call(fetchMock, 'GET', '/api/paas/accesses/9/review')).toBeTruthy()
+  })
+
   it('offers the picker only when the platform allows route writes', async () => {
     const readOnly = await mountPage({ bootstrap: { routes_write: false } })
     await chooseAccess(readOnly.wrapper)

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.1 — first lab run fixes
+
+- PaaS 連結: while a linked page reads its Security Accesses it says so, instead of
+  flashing "這個工作區還沒有安全存取服務"; the workspace list, the workspace's services
+  and the accesses are read side by side (the page was ready after ~7.5 s through
+  Cloudflare, one platform call after the other).
+- A route write the platform refuses as not writable shows the platform's reason.
+- Chart 0.1.1 (appVersion 1.3.1).
+
 ## 1.3.0 — PaaS edition (WOOWTECH/Woow_k3s_cf_tunnel_webgui)
 
 First release of the WOOW PaaS edition, branched from the Podman edition 1.2.1

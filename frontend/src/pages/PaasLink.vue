@@ -83,7 +83,8 @@
               這個 WebGUI 位於「{{ thisWorkspace?.name }}」工作區；工作區裡的服務只能透過「{{ thisWorkspace?.name }}」的安全存取服務對外開通。
               <button v-if="thisWorkspaceListed" type="button" class="ml-1 font-semibold text-cf-orange underline" @click="selectThisWorkspace">改選「{{ thisWorkspace?.name }}」</button>
             </div>
-            <div v-if="workspaceId && !accesses.length" class="mt-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">這個工作區還沒有安全存取服務。<a :href="workspacePortal || undefined" target="_blank" rel="noopener noreferrer" class="font-semibold underline">到 PaaS 建立 ↗</a></div>
+            <div v-if="workspaceId && accessesLoading" class="mt-4 rounded-lg bg-slate-50 px-4 py-3 text-sm text-slate-600" data-test="accesses-loading">正在讀取這個工作區的安全存取服務…</div>
+            <div v-else-if="workspaceId && !accesses.length" class="mt-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">這個工作區還沒有安全存取服務。<a :href="workspacePortal || undefined" target="_blank" rel="noopener noreferrer" class="font-semibold underline">到 PaaS 建立 ↗</a></div>
             <div v-if="review" class="mt-5 rounded-xl border p-5" :class="review.ready && !review.public_routes.length ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'" data-test="review">
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <h3 class="font-semibold text-gray-900">{{ review.access.name }} · {{ review.ready ? (review.public_routes.length ? '可以連結（含公開網址）' : '可以連結') : '需要完成設定' }}</h3>
@@ -242,6 +243,9 @@ const authorization = ref<Authorization | null>(null)
 const authStatus = ref('')
 const workspaces = ref<Workspace[]>([])
 const accesses = ref<Access[]>([])
+// True while the selected workspace's services are being read: the "no
+// Security Access yet" hint must not flash during that request.
+const accessesLoading = ref(false)
 const workspaceId = ref<number | null>(null)
 const accessId = ref<number | null>(null)
 const review = ref<PaasReview | null>(null)
@@ -309,13 +313,14 @@ function tunnelLabel(value: string): string {
 async function loadBootstrap() {
   bootstrap.value = await api<PaasBootstrap>('/api/paas/bootstrap')
   if (bootstrap.value.authorized) {
-    await Promise.all([loadWorkspaces(), loadWorkspaceInfo()])
+    if (!bootstrap.value.connection) await Promise.all([loadWorkspaces(), loadWorkspaceInfo()])
     if (bootstrap.value.connection) {
+      // Every call below goes to the platform; run what does not depend on
+      // another call side by side so a linked page is ready sooner.
       workspaceId.value = bootstrap.value.connection.workspace_id
-      await onWorkspaceChange()
+      await Promise.all([loadWorkspaces(), loadWorkspaceInfo(), onWorkspaceChange()])
       accessId.value = bootstrap.value.connection.access_id
-      await loadReview()
-      await loadStatus()
+      await Promise.all([loadReview(), loadStatus()])
     } else if (workspaceId.value === null && thisWorkspaceListed.value && thisWorkspace.value) {
       // Preselect the workspace this WebGUI runs in; the user can still pick another.
       workspaceId.value = thisWorkspace.value.id
@@ -366,7 +371,12 @@ async function onWorkspaceChange() {
   accessId.value = null
   accesses.value = []
   if (workspaceId.value !== null) {
-    accesses.value = (await api<{ accesses: Access[] }>(`/api/paas/workspaces/${workspaceId.value}/accesses`)).accesses
+    accessesLoading.value = true
+    try {
+      accesses.value = (await api<{ accesses: Access[] }>(`/api/paas/workspaces/${workspaceId.value}/accesses`)).accesses
+    } finally {
+      accessesLoading.value = false
+    }
   }
 }
 
