@@ -36,6 +36,7 @@ import aiohttp
 from fastapi import APIRouter, Body, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 
+from .. import __version__
 from ..services import metrics, runtime
 from ..services.external_probe import probe as probe_hostname
 from ..services.instances import cli, config_mgr, pm, token_store
@@ -53,6 +54,9 @@ DEVICE_GRANT = "urn:ietf:params:oauth:grant-type:device_code"
 PREFIX_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$")
 ROUTE_SCHEMES = ("http", "https", "tcp", "ssh", "rdp")
 MAX_BULK_ROUTES = 10
+# Cloudflare's Browser Integrity Check answers some default library user
+# agents with error 1010; the platform sits behind Cloudflare.
+USER_AGENT = f"WoowCloudflareTunnelWebGUI/{__version__} (+https://github.com/WOOWTECH/Woow_k3s_cf_tunnel_webgui)"
 _pending: dict = {}
 # Serializes claim, disconnect and configuration writes (routers/config.py),
 # so a concurrent save cannot reintroduce a credential during a release.
@@ -98,7 +102,7 @@ def _portal_path(workspace_id: int, access_id: int | None = None, tab: str = "ov
 async def _form_post(path: str, form: dict) -> tuple[int, dict]:
     try:
         timeout = aiohttp.ClientTimeout(total=15)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with aiohttp.ClientSession(timeout=timeout, headers={"User-Agent": USER_AGENT}) as session:
             async with session.post(f"{_api_base()}{path}", data=form) as response:
                 payload = await response.json(content_type=None)
                 return response.status, payload if isinstance(payload, dict) else {}
@@ -135,7 +139,7 @@ async def _call(method: str, path: str, json_body: dict | None = None,
     token = await _access_token()
     try:
         client_timeout = aiohttp.ClientTimeout(total=timeout)
-        async with aiohttp.ClientSession(timeout=client_timeout) as session:
+        async with aiohttp.ClientSession(timeout=client_timeout, headers={"User-Agent": USER_AGENT}) as session:
             async with session.request(
                 method, f"{_api_base()}{path}", json=json_body,
                 headers={"Authorization": f"Bearer {token}"},
