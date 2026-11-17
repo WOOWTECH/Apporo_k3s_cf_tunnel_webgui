@@ -1,6 +1,6 @@
 """Guided Apporo account and Security Access connection.
 
-Same flow and platform API as the WOOW HA add-on (Woow_ha_cloudflare_tunnel_webgui
+Same flow and platform API as the WOOW HA add-on (Woow_ha_cf_tunnel_webgui
 1.1.x) and the Apporo Podman edition, pointed at the Apporo platform
 (www.apporo.ai): OAuth device authorization, per-route Access review, tunnel binding,
 anonymous external checks and release. Only this backend handles OAuth tokens
