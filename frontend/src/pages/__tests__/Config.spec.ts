@@ -3,6 +3,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import Config from '../Config.vue'
 import type { TunnelConfig } from '@/types'
+import { jsonResponse, stubClipboard, unstubClipboard, workspaceInfo } from '@/__tests__/workspaceFixtures'
 
 function baseConfig(overrides: Partial<TunnelConfig> = {}): TunnelConfig {
   return {
@@ -79,5 +80,103 @@ describe('Config', () => {
     await flushPromises()
     expect(wrapper.text()).toContain('由 WOOW PaaS 自動管理')
     expect(wrapper.find('select').attributes('disabled')).toBeDefined()
+  })
+})
+
+describe('Config: workspace services', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    document.cookie = 'csrftoken=tok123'
+    window.localStorage.clear()
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    unstubClipboard()
+  })
+
+  function backendWithWorkspace(config: TunnelConfig) {
+    const base = backend(config)
+    return vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/workspace') return jsonResponse(workspaceInfo())
+      return base(url, init)
+    })
+  }
+
+  function routeInputs(wrapper: ReturnType<typeof mountConfig>, placeholder: string) {
+    return wrapper.findAll(`input[placeholder="${placeholder}"]`).map((input) => (input.element as HTMLInputElement).value)
+  }
+
+  it('從工作區加入服務 appends the picked services to the routes, and Save sends them', async () => {
+    const old = { hostname: 'old.example.com', service: 'http://svc-old:80', disableChunkedEncoding: false }
+    const fetchMock = backendWithWorkspace(baseConfig({ routes: [old] }))
+    vi.stubGlobal('fetch', fetchMock)
+    const wrapper = mountConfig()
+    await flushPromises()
+    expect(wrapper.find('[data-test="copy-routes"]').exists()).toBe(false) // local mode
+
+    await wrapper.get('[data-test="add-from-workspace"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="picker-domain"]').setValue('example.com')
+    await wrapper.findAll('[data-test="picker-row"]')[0].get('[data-test="picker-select"]').setValue(true)
+    await wrapper.get('[data-test="picker-submit"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="workspace-picker"]').exists()).toBe(false)
+    expect(routeInputs(wrapper, 'app.example.com')).toEqual(['old.example.com', 'pi-1.example.com'])
+    expect(routeInputs(wrapper, 'http://<服務名稱>:8080')).toEqual(['http://svc-old:80', 'http://svc-11111111-pi-agent:8080'])
+
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+    const put = fetchMock.mock.calls.find(([url]) => url.startsWith('/api/config?restart='))!
+    expect(JSON.parse(String(put[1]!.body)).routes).toEqual([
+      old,
+      { hostname: 'pi-1.example.com', service: 'http://svc-11111111-pi-agent:8080', disableChunkedEncoding: false },
+    ])
+  })
+
+  it('token mode keeps the dashboard note and copies hostname → service lines', async () => {
+    vi.stubGlobal('fetch', backendWithWorkspace(baseConfig({
+      mode: 'token',
+      tunnel_token_set: true,
+      tunnel_token_masked: '********',
+      routes: [
+        { hostname: 'a.example.com', service: 'http://svc-a:8080', disableChunkedEncoding: false },
+        { hostname: 'b.example.com', service: 'http://svc-b:80', disableChunkedEncoding: false },
+      ],
+    })))
+    const writeText = stubClipboard()
+    const wrapper = mountConfig()
+    await flushPromises()
+    expect(wrapper.text()).toContain('Token 模式下,ingress 路由由 Cloudflare 後台或 PaaS 管理')
+    await wrapper.get('[data-test="copy-routes"]').trigger('click')
+    await flushPromises()
+    expect(writeText).toHaveBeenCalledWith('a.example.com → http://svc-a:8080\nb.example.com → http://svc-b:80')
+    expect(wrapper.text()).toContain('已複製')
+  })
+
+  it('shows the list for manual copying when the browser refuses the clipboard', async () => {
+    vi.stubGlobal('fetch', backendWithWorkspace(baseConfig({
+      mode: 'token',
+      tunnel_token_set: true,
+      routes: [{ hostname: 'a.example.com', service: 'http://svc-a:8080', disableChunkedEncoding: false }],
+    })))
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: vi.fn(async () => { throw new Error('denied') }) },
+      configurable: true,
+    })
+    const wrapper = mountConfig()
+    await flushPromises()
+    await wrapper.get('[data-test="copy-routes"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('瀏覽器不允許自動複製')
+    const manual = wrapper.findAll('textarea').find((area) => (area.element as HTMLTextAreaElement).readOnly)!
+    expect((manual.element as HTMLTextAreaElement).value).toBe('a.example.com → http://svc-a:8080')
+  })
+
+  it('no longer suggests localhost', async () => {
+    vi.stubGlobal('fetch', backend(baseConfig()))
+    const wrapper = mountConfig()
+    await flushPromises()
+    expect(wrapper.html()).not.toContain('localhost:')
   })
 })

@@ -628,7 +628,7 @@ async def reconcile_pending_disconnect() -> None:
 # ── PaaS edition: publish the workspace's services through the Security Access ──
 
 _ROUTE_ERRORS = {
-    "unavailable": "部分網址名稱無法使用（已被使用或格式不符）",
+    "unavailable": "部分子網域前綴無法使用（已被使用或格式不符）",
     "quota_exceeded": "超過方案可用的網址數量",
     "not_writable": "這個 Security Access 目前不能修改（訂閱未啟用、停權或仍在部署）",
 }
@@ -643,7 +643,7 @@ class BulkRoute(BaseModel):
     def _prefix(cls, value: str) -> str:
         value = (value or "").strip().lower()
         if not PREFIX_RE.match(value):
-            raise ValueError("網址名稱需為 3–63 個小寫英數字或連字號，且不能以連字號開頭或結尾")
+            raise ValueError("子網域前綴需為 3–63 個小寫英數字或連字號，且不能以連字號開頭或結尾")
         return value
 
     @field_validator("service_url")
@@ -665,7 +665,7 @@ class BulkRoutesReq(BaseModel):
         seen: set[str] = set()
         for route in value:
             if route.subdomain_prefix in seen:
-                raise ValueError(f"網址名稱重複：{route.subdomain_prefix}")
+                raise ValueError(f"子網域前綴重複：{route.subdomain_prefix}")
             seen.add(route.subdomain_prefix)
         return value
 
@@ -677,6 +677,16 @@ def _require_routes_write() -> None:
 
 def _route_error_message(payload: dict) -> str:
     return _ROUTE_ERRORS.get(payload.get("error") or "") or payload.get("detail") or "PaaS 拒絕了這次新增"
+
+
+def _forbidden_message(payload: dict, action: str) -> str:
+    """Tell apart the three 403s of the platform: role, OAuth scope, membership."""
+    if payload.get("error") == "insufficient_role":
+        return f"需要此工作區的擁有者或管理員權限才能{action}"
+    if "scope" in str(payload.get("detail") or "").lower():
+        # A link authorized before route writing was enabled lacks the scope.
+        return f"目前的 PaaS 授權不含{action}的權限：請在本頁按「撤銷授權」後重新授權"
+    return "你不是這個工作區的成員，或沒有權限存取這個 Security Access"
 
 
 @router.get("/routes/check")
@@ -706,7 +716,7 @@ async def create_routes(access_id: int, body: BulkRoutesReq) -> dict:
         timeout=120,
     )
     if status == 403:
-        raise HTTPException(403, "需要此工作區的擁有者或管理員權限才能新增網址")
+        raise HTTPException(403, _forbidden_message(payload, "新增網址"))
     if status == 404:
         raise HTTPException(404, "找不到這個 Security Access，或平台不支援由 WebGUI 新增網址")
     if status == 409:
@@ -731,7 +741,7 @@ async def delete_route(access_id: int, route_id: int) -> dict:
     status, payload = await _call(
         "DELETE", f"/api/security-access/accesses/{access_id}/routes/{route_id}", timeout=120)
     if status == 403:
-        raise HTTPException(403, "需要此工作區的擁有者或管理員權限才能移除網址")
+        raise HTTPException(403, _forbidden_message(payload, "移除網址"))
     if status == 404:
         raise HTTPException(404, "找不到這條網址")
     if status == 409:

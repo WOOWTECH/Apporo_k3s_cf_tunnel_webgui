@@ -20,6 +20,10 @@
         查看狀態請回
         <router-link to="/" class="font-medium underline">Dashboard</router-link>。
       </p>
+      <p class="mt-3 text-sm text-amber-700">
+        token 模式的路由在 Cloudflare 後台(或 PaaS)管理。要把工作區服務加到後台,可在 Config
+        用「從工作區加入服務」整理 hostname 與服務網址,再按「複製清單」貼上。
+      </p>
     </section>
 
     <template v-if="!isTokenMode">
@@ -105,10 +109,24 @@
     >
       <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
         <h2 class="mb-2 text-lg font-semibold text-gray-900">設定路由</h2>
-        <p class="mb-4 text-sm text-gray-500">
+        <p class="mb-2 text-sm text-gray-500">
           新增要透過 tunnel 對外公開的服務。Tunnel UUID:
           <code class="text-gray-700">{{ setup.tunnelUuid }}</code>
         </p>
+        <p class="mb-3 text-xs text-gray-400">
+          cloudflared 在自己的 Pod 執行,localhost 指不到其他服務。Service 請填工作區服務的名稱與埠,
+          例如 http://&lt;服務名稱&gt;:8080,或用「從工作區加入服務」直接挑選。
+        </p>
+        <div class="mb-3">
+          <button
+            type="button"
+            class="rounded-lg border border-cf-orange bg-orange-50 px-3 py-1.5 text-xs font-semibold text-cf-orange hover:bg-orange-100"
+            data-test="add-from-workspace"
+            @click="pickerOpen = true"
+          >
+            從工作區加入服務
+          </button>
+        </div>
         <RouteEditor v-model:routes="routes" />
 
         <div class="mt-4">
@@ -164,6 +182,14 @@
       </div>
     </section>
     </template>
+
+    <WorkspaceServicePicker
+      v-if="pickerOpen"
+      mode="hostname"
+      :existing="routes.map((route) => route.hostname)"
+      @submit="addFromWorkspace"
+      @close="pickerOpen = false"
+    />
   </div>
 </template>
 
@@ -172,9 +198,11 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useSetupStore } from '@/stores/setup'
 import { useWebSocket } from '@/composables/useWebSocket'
 import { hostnameError } from '@/utils/hostname'
+import { appendRoutes } from '@/utils/routes'
 import RouteEditor from '@/components/RouteEditor.vue'
 import LogViewer from '@/components/LogViewer.vue'
-import type { Route } from '@/types'
+import WorkspaceServicePicker from '@/components/WorkspaceServicePicker.vue'
+import type { PaasRouteRequest, Route } from '@/types'
 
 type WizardStep = 'A' | 'B' | 'C' | 'D'
 
@@ -191,6 +219,12 @@ const tunnelName = ref('')
 const routes = ref<Route[]>([])
 const catchAll = ref('')
 const appliedDone = ref(false)
+const pickerOpen = ref(false)
+
+function addFromWorkspace(items: PaasRouteRequest[] | Route[]): void {
+  routes.value = appendRoutes(routes.value, items as Route[]) // hostname mode emits Route items
+  pickerOpen.value = false
+}
 
 // --- Step A: account-link via WebSocket ---
 const loginUrl = ref<string | null>(null)

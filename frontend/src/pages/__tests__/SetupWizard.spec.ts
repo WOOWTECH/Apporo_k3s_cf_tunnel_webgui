@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import SetupWizard from '../SetupWizard.vue'
+import { jsonResponse, workspaceInfo } from '@/__tests__/workspaceFixtures'
 
 interface StateResp {
   has_cert: boolean
@@ -104,5 +105,51 @@ describe('SetupWizard', () => {
     const err = wrapper.find('[data-test="apply-error"]')
     expect(err.exists()).toBe(true)
     expect(err.text()).toContain('ingress 驗證失敗')
+  })
+})
+
+describe('SetupWizard: workspace services', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    document.cookie = 'csrftoken=tok123'
+    window.localStorage.clear()
+  })
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('步驟 C:從工作區加入服務 appends the picked services to the routes', async () => {
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url === '/api/setup/state') {
+        return Promise.resolve(jsonResponse({ has_cert: true, has_tunnel: true, tunnel_uuid: 'uuid-1', mode: 'local' }))
+      }
+      if (url === '/api/workspace') return Promise.resolve(jsonResponse(workspaceInfo()))
+      return Promise.reject(new Error(`unexpected fetch: ${url}`))
+    }))
+    const wrapper = mountWizard()
+    await flushPromises()
+
+    await wrapper.get('[data-test="add-row"]').trigger('click') // left blank: dropped when services are added
+    await wrapper.get('[data-test="add-from-workspace"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="picker-domain"]').setValue('example.com')
+    const rows = wrapper.findAll('[data-test="picker-row"]')
+    await rows[0].get('[data-test="picker-select"]').setValue(true)
+    await rows[1].get('[data-test="picker-select"]').setValue(true)
+    await wrapper.get('[data-test="picker-submit"]').trigger('click')
+    await flushPromises()
+
+    const values = (placeholder: string) =>
+      wrapper.findAll(`input[placeholder="${placeholder}"]`).map((input) => (input.element as HTMLInputElement).value)
+    expect(values('app.example.com')).toEqual(['pi-1.example.com', 'omnigent-1.example.com'])
+    expect(values('http://<服務名稱>:8080')).toEqual(['http://svc-11111111-pi-agent:8080', 'http://svc-22222222-omnigent:8000'])
+    expect(wrapper.find('[data-test="workspace-picker"]').exists()).toBe(false)
+    expect(wrapper.get('[data-test="apply"]').attributes('disabled')).toBeUndefined()
+  })
+
+  it('token mode points to Config for building the list for the dashboard', async () => {
+    vi.stubGlobal('fetch', stateOnly({ has_cert: false, has_tunnel: false, tunnel_uuid: null, mode: 'token' }))
+    const wrapper = mountWizard()
+    await flushPromises()
+    expect(wrapper.get('[data-test="token-guard"]').text()).toContain('從工作區加入服務')
+    expect(wrapper.find('[data-test="add-from-workspace"]').exists()).toBe(false)
   })
 })

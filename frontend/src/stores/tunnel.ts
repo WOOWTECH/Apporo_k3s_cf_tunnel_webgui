@@ -5,7 +5,7 @@ import type { ActionResponse, HealthStatus } from '@/types'
 
 /**
  * Health / tunnel status store. The status comes from cloudflared's /ready
- * (edge connections), the same signal the container healthcheck uses.
+ * (edge connections), read from cloudflared's metrics /ready.
  */
 export const useTunnelStore = defineStore('tunnel', () => {
   const health = ref<HealthStatus | null>(null)

@@ -30,7 +30,7 @@
           <input
             :value="route.service"
             type="text"
-            placeholder="http://localhost:8080"
+            placeholder="http://&lt;服務名稱&gt;:8080"
             class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-cf-orange focus:outline-none focus:ring-1 focus:ring-cf-orange"
             @input="setService(i, ($event.target as HTMLInputElement).value)"
           />

@@ -276,3 +276,19 @@ def test_cross_origin_websocket_is_refused():
         assert refused.value.code == 4403
         with tc.websocket_connect("/ws/logs", headers={"origin": "http://testserver"}) as ws:
             ws.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("payload,expected", [
+    ({"error": "insufficient_role", "detail": "x"}, "擁有者或管理員"),
+    ({"error": "Forbidden", "detail": "Insufficient scope. Required: security-access:routes"}, "重新授權"),
+    ({"error": "Forbidden", "detail": "No access to the workspace"}, "不是這個工作區的成員"),
+])
+async def test_forbidden_reasons_are_told_apart(client, platform, tmp_config_dir, payload, expected):
+    _authorized(tmp_config_dir)
+    platform.post_status = 403
+    platform.post_payload = payload
+    response = await client.post("/api/paas/accesses/25/routes", json=BULK)
+    assert response.status_code == 403
+    assert expected in response.json()["detail"]
+

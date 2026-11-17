@@ -83,7 +83,8 @@
       <fieldset class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
         <legend class="px-2 text-sm font-semibold text-gray-700">Routes</legend>
         <p class="mt-1 mb-3 text-xs text-gray-400">
-          把公開 hostname 導向本機服務(容器使用 host 網路,填 http://localhost:埠)。
+          把公開 hostname 導向工作區裡的服務。cloudflared 在自己的 Pod 執行,localhost 指不到其他服務;
+          請填 http://&lt;服務名稱&gt;:埠,或用「從工作區加入服務」直接挑選。
           「儲存並套用」時會為新的 hostname 建立 DNS。
         </p>
         <div
@@ -91,12 +92,45 @@
           class="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700"
         >
           Token 模式下,ingress 路由由 Cloudflare 後台或 PaaS 管理。以下本地路由設定僅在
-          <span class="font-medium">local</span> 模式生效。
+          <span class="font-medium">local</span> 模式生效;可以用「複製清單」把 hostname → service 貼到 Cloudflare 後台。
+          <template v-if="managedByPaas">
+            PaaS 管理的 tunnel 可到
+            <router-link to="/paas" class="font-medium underline">PaaS 連結</router-link>
+            一次開通工作區服務。
+          </template>
         </div>
         <p v-else class="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
           移除路由或停止 tunnel,不會自動刪除 Cloudflare DNS。請到 Cloudflare DNS 檢查該網址的 CNAME,
           確認不再使用後才刪除;也請檢查對應的 Access 應用。
         </p>
+        <div class="mb-3 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            class="rounded-lg border border-cf-orange bg-orange-50 px-3 py-1.5 text-xs font-semibold text-cf-orange hover:bg-orange-100"
+            data-test="add-from-workspace"
+            @click="pickerOpen = true"
+          >
+            從工作區加入服務
+          </button>
+          <button
+            v-if="form.mode === 'token'"
+            type="button"
+            class="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            :disabled="!routeList"
+            data-test="copy-routes"
+            @click="copy(routeList)"
+          >
+            複製清單
+          </button>
+          <span v-if="copyFeedback" class="text-xs text-gray-500">{{ copyFeedback }}</span>
+        </div>
+        <textarea
+          v-if="copyManual"
+          readonly
+          rows="4"
+          class="mb-3 w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs"
+          :value="copyManual"
+        />
         <RouteEditor :routes="form.routes" @update:routes="form.routes = $event" />
       </fieldset>
 
@@ -107,12 +141,12 @@
           <div>
             <label class="block text-sm font-medium text-gray-700">Catch-All Service URL</label>
             <p class="mb-1 text-xs text-gray-400">
-              未符合上方 hostname 的流量,例如交給本機的 Nginx Proxy Manager:http://localhost:80
+              未符合上方 hostname 的流量,例如交給工作區裡的反向代理服務:http://&lt;服務名稱&gt;:80。留空則回應 404。
             </p>
             <input
               v-model="form.catch_all_service"
               type="text"
-              placeholder="http://localhost:80"
+              placeholder="http_status:404"
               class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-cf-orange focus:outline-none focus:ring-1 focus:ring-cf-orange"
             />
           </div>
@@ -239,6 +273,15 @@
         {{ configStore.error }}
       </div>
     </form>
+
+    <!-- Outside the form: Enter in the picker must not submit the settings. -->
+    <WorkspaceServicePicker
+      v-if="pickerOpen"
+      mode="hostname"
+      :existing="form.routes.map((route) => route.hostname)"
+      @submit="addFromWorkspace"
+      @close="pickerOpen = false"
+    />
   </div>
 </template>
 
@@ -248,8 +291,11 @@ import { useConfigStore } from '@/stores/config'
 import { useTunnelStore } from '@/stores/tunnel'
 import TokenInput from '@/components/TokenInput.vue'
 import RouteEditor from '@/components/RouteEditor.vue'
+import WorkspaceServicePicker from '@/components/WorkspaceServicePicker.vue'
+import { useCopy } from '@/composables/useCopy'
 import { hostnameError } from '@/utils/hostname'
-import type { LogLevel, Route, SetupMode, TunnelConfigUpdate } from '@/types'
+import { appendRoutes, routeLines } from '@/utils/routes'
+import type { LogLevel, PaasRouteRequest, Route, SetupMode, TunnelConfigUpdate } from '@/types'
 
 const LOG_LEVELS: LogLevel[] = ['debug', 'info', 'warn', 'error', 'fatal']
 const RUN_PARAMETER_RE =
@@ -262,6 +308,8 @@ const tokenInput = ref<string | null>(null)
 const clearToken = ref(false)
 const runParametersText = ref('')
 const lastSaveApplied = ref(false)
+const pickerOpen = ref(false)
+const { copy, feedback: copyFeedback, manualText: copyManual } = useCopy()
 
 const form = reactive({
   mode: 'local' as SetupMode,
@@ -296,6 +344,14 @@ const hasErrors = computed(
     tokenModeWithoutToken.value ||
     form.routes.some((r) => hostnameError(r.hostname) !== null || !r.service.trim())
 )
+
+/** `hostname → service` lines for the Cloudflare dashboard (token mode). */
+const routeList = computed(() => routeLines(form.routes))
+
+function addFromWorkspace(items: PaasRouteRequest[] | Route[]) {
+  form.routes = appendRoutes(form.routes, items as Route[]) // hostname mode emits Route items
+  pickerOpen.value = false
+}
 
 function toggleClearToken() {
   clearToken.value = !clearToken.value

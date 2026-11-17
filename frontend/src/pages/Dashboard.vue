@@ -16,7 +16,7 @@
       v-else-if="health?.stopped_by_operator"
       class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700"
     >
-      偵測到 <code>/data/.tunnel_stopped</code> 標記:healthcheck 與開機自動啟動都不會把 tunnel 拉起。
+      偵測到 <code>/data/.tunnel_stopped</code> 標記：服務重新啟動時不會自動啟動 tunnel。
       按 Start 會移除標記並啟動。
     </div>
 
@@ -60,6 +60,21 @@
       </StatusCard>
     </div>
 
+    <!-- Workspace (PaaS edition) -->
+    <div
+      v-if="workspace"
+      class="rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600"
+      data-test="workspace-summary"
+    >
+      <template v-if="workspace.available">
+        工作區 namespace
+        <code class="text-gray-900">{{ workspace.namespace }}</code>
+        <template v-if="workspace.workspace">({{ workspace.workspace.name }})</template>
+        · 同工作區服務 {{ workspace.services?.length ?? 0 }} 個
+      </template>
+      <template v-else>無法讀取工作區服務:{{ workspace.reason || '原因不明' }}</template>
+    </div>
+
     <!-- Action Buttons -->
     <div class="flex gap-3">
       <button
@@ -99,14 +114,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useTunnelStore } from '@/stores/tunnel'
 import { useConfigStore } from '@/stores/config'
+import { getWorkspace } from '@/api'
 import TunnelStatus from '@/components/TunnelStatus.vue'
 import StatusCard from '@/components/StatusCard.vue'
+import type { WorkspaceInfo } from '@/types'
 
 const tunnelStore = useTunnelStore()
 const configStore = useConfigStore()
+const workspace = ref<WorkspaceInfo | null>(null)
 
 const health = computed(() => tunnelStore.health)
 const config = computed(() => configStore.config)
@@ -142,7 +160,7 @@ async function run(endpoint: 'start' | 'restart') {
 
 async function onStop() {
   const ok = window.confirm(
-    '停止 tunnel?已設定的 tunnel 約 2 分鐘後會被 healthcheck 自動拉回;在這段期間,經由這條 tunnel 的 SSH 等連線都會中斷。'
+    '停止 tunnel？經由這條 tunnel 開出去的網址都會中斷，直到再按「啟動」或這個服務重新啟動。'
   )
   if (ok) await tunnelStore.action('stop').catch(() => {})
 }
@@ -150,5 +168,12 @@ async function onStop() {
 onMounted(() => {
   tunnelStore.fetchHealth()
   configStore.fetchConfig()
+  getWorkspace()
+    .then((info) => {
+      workspace.value = info
+    })
+    .catch(() => {
+      workspace.value = null // informational only; the cards above stay usable
+    })
 })
 </script>
