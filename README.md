@@ -11,9 +11,9 @@
 ---
 
 Apporo CF Tunnel Web comes in three editions: Podman
-([Apporo_podman_cf_tunnel_webgui](https://github.com/WOOWTECH/apporo_cf_tunnel_web)),
+([Apporo_podman_cf_tunnel_webgui](https://github.com/WOOWTECH/Apporo_podman_cf_tunnel_webgui)),
 Home Assistant add-on
-([Apporo_ha_cf_tunnel_webgui](https://github.com/WOOWTECH/apporo_ha_cf_tunnel_web)) and this
+([Apporo_ha_cf_tunnel_webgui](https://github.com/WOOWTECH/Apporo_ha_cf_tunnel_webgui)) and this
 Kubernetes (k3s) edition. All three have the same pages and the same three ways to connect:
 
 | Page | What it does |
@@ -36,6 +36,15 @@ publish, and lists those services so you can pick them instead of typing address
   offer it yet.)
 - **Config (token)**: the routes of a token-mode tunnel live in the Cloudflare dashboard;
   the picker gives you the list to enter there.
+
+## Editions
+
+| | Podman | Home Assistant add-on | Kubernetes (k3s) |
+|---|---|---|---|
+| **WOOW** (aiot.woowtech.io) | [Woow_podman_cf_tunnel_webgui](https://github.com/WOOWTECH/Woow_podman_cf_tunnel_webgui) | [Woow_ha_cf_tunnel_webgui](https://github.com/WOOWTECH/Woow_ha_cf_tunnel_webgui) | [Woow_k3s_cf_tunnel_webgui](https://github.com/WOOWTECH/Woow_k3s_cf_tunnel_webgui) |
+| **Apporo** (www.apporo.ai) | [Apporo_podman_cf_tunnel_webgui](https://github.com/WOOWTECH/Apporo_podman_cf_tunnel_webgui) | [Apporo_ha_cf_tunnel_webgui](https://github.com/WOOWTECH/Apporo_ha_cf_tunnel_webgui) | [Apporo_k3s_cf_tunnel_webgui](https://github.com/WOOWTECH/Apporo_k3s_cf_tunnel_webgui) |
+
+Tutorial (HA add-on, Traditional Chinese): [Woow_ha_cf_tunnel_tutorial_site](https://github.com/WOOWTECH/Woow_ha_cf_tunnel_tutorial_site) · https://ha-cloudflare-tunnel-guide.woowtech.io
 
 ## How it works
 
